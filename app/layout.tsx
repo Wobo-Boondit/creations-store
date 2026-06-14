@@ -10,6 +10,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 
+import { signOut } from "@/lib/actions";
 import { directory } from "@/directory.config";
 
 const font = Font({
@@ -76,12 +77,14 @@ const Header = async ({ user }: { user: any }) => {
               >
                 Dashboard
               </Link>
-              <Link
-                href="/auth/signout"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-accent"
-              >
-                Sign Out
-              </Link>
+              <form action={signOut} className="inline">
+                <button
+                  type="submit"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-accent"
+                >
+                  Sign Out
+                </button>
+              </form>
             </>
           ) : (
             <Link
