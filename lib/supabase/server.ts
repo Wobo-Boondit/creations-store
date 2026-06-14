@@ -17,12 +17,16 @@ export async function createServerSupabaseClient() {
           return cookieStore.getAll();
         },
         setAll(cookiesToSet: { name: string; value: string; options?: any }[]) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, {
-              ...options,
-              domain: ".boondit.site",
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, {
+                ...options,
+                domain: ".boondit.site",
+              });
             });
-          });
+          } catch {
+            // Server Components can't set cookies — middleware handles refresh
+          }
         },
       },
     }
