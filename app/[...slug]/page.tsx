@@ -4,8 +4,10 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import Balancer from "react-wrap-balancer";
 
+export const dynamic = "force-dynamic";
+
 // Database Imports
-import { getCreationById, incrementCreationViews, getCreationReviews } from "@/lib/data";
+import { getCreationBySlug, getCreationById, incrementCreationViews, getCreationReviews } from "@/lib/data";
 
 // Component Imports
 import { Section, Container } from "@/components/craft";
@@ -19,31 +21,39 @@ import { StarRating } from "@/components/star-rating";
 // Metadata
 import { Metadata, ResolvingMetadata } from "next";
 import Markdown from "react-markdown";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+
+// UUID regex to extract ID from "{uuid}-{slug}" format
+const UUID_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+
+async function resolveCreation(slugPath: string) {
+  // Try UUID prefix first (card links are /{uuid}-{slug})
+  const uuidMatch = slugPath.match(UUID_RE);
+  if (uuidMatch) {
+    const byId = await getCreationById(uuidMatch[1]);
+    if (byId) return byId;
+  }
+  // Fall back to direct slug lookup
+  return getCreationBySlug(slugPath);
+}
 
 type Props = {
-  params: { slug: string[] };
+  params: Promise<{ slug: string[] }>;
 };
 
 export async function generateMetadata(
   { params }: Props,
   parent: ResolvingMetadata,
 ): Promise<Metadata> {
-  // Parse id from the URL (format: id-slug)
-  const slugParam = params.slug.join('/');
-  const id = parseInt(slugParam.split('-')[0]);
+  const { slug: slugArr } = await params;
+  const slug = slugArr.join('/');
 
-  if (isNaN(id)) {
+  const bookmark = await resolveCreation(slug);
+
+  if (!bookmark) {
     return {
       title: "Not Found",
     };
-  }
-
-  const bookmark = await getCreationById(id);
-
-  if (!bookmark) {
-    notFound();
   }
 
   const previousImages = (await parent).openGraph?.images || [];
@@ -73,31 +83,26 @@ export async function generateMetadata(
 }
 
 export default async function Page({ params }: Props) {
-  // Parse id from the URL (format: id-slug)
-  const slugParam = params.slug.join('/');
-  const id = parseInt(slugParam.split('-')[0]);
+  const { slug: slugArr } = await params;
+  const slug = slugArr.join('/');
 
-  if (isNaN(id)) {
-    notFound();
-  }
-
-  const bookmark = await getCreationById(id);
+  const bookmark = await resolveCreation(slug);
 
   if (!bookmark) {
     notFound();
   }
 
   // Fetch reviews
-  const reviews = await getCreationReviews(id);
+  const reviews = await getCreationReviews(bookmark.id);
 
-  // Get current session
-  const session = await getServerSession(authOptions);
+  // Get current user
+  const user = await getCurrentUser();
 
   // Get headers for IP tracking and URL generation
   const headersList = await headers();
 
   // Get a consistent session identifier for view tracking
-  // Use user ID if logged in, otherwise use IP address
+  // Use user ID if logged in, otherwise anonymized IP hash
   let viewSessionId: string;
   if (bookmark.user?.id) {
     viewSessionId = `user_${bookmark.user.id}`;
@@ -107,13 +112,12 @@ export default async function Page({ params }: Props) {
     const realIp = headersList.get('x-real-ip');
     const ip = forwarded ? forwarded.split(',')[0].trim() : realIp || 'localhost';
 
-    // For local development, normalize common local IPs
-    const normalizedIp = (ip === '::1' || ip === '127.0.0.1' || ip === 'localhost') ? 'local_dev' : ip;
+    // Anonymize IP — keep /24 subnet for dedup, drop host portion (privacy)
+    const normalizedIp = (ip === '::1' || ip === '127.0.0.1' || ip === 'localhost')
+      ? 'local_dev'
+      : ip.replace(/(\d+)\.(\d+)\.(\d+)\.(\d+)/, '$1.$2.$3.0');
 
     viewSessionId = `anon_${normalizedIp}`;
-
-    // Log for debugging
-    console.log(`[View Tracking] Session ID: ${viewSessionId}, Creation ID: ${id}`);
   }
 
   // Increment views in the background with rate limiting
@@ -122,7 +126,7 @@ export default async function Page({ params }: Props) {
   // Get the full URL for sharing
   const host = headersList.get('host') || '';
   const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-  const pageUrl = `${protocol}://${host}/${slugParam}`;
+  const pageUrl = `${protocol}://${host}/${slug}`;
 
   return (
     <Section>
@@ -179,7 +183,7 @@ export default async function Page({ params }: Props) {
                         href={`/u/${bookmark.user.id}`}
                         className="text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        {bookmark.user.name}
+                        {bookmark.user.username}
                       </Link>
                     </div>
                   )}
@@ -196,7 +200,7 @@ export default async function Page({ params }: Props) {
                   pageUrl={pageUrl}
                   proxyCode={bookmark.proxyCode}
                   creationId={bookmark.id}
-                  isOwner={session?.user?.id === bookmark.userId}
+                  isOwner={user?.id === bookmark.userId}
                 />
               </div>
             </div>
@@ -338,7 +342,7 @@ export default async function Page({ params }: Props) {
             <div className="border-t pt-8">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold">More from {bookmark.user.name}</h3>
+                  <h3 className="text-lg font-semibold">More from {bookmark.user.username}</h3>
                   <Link
                     href={`/u/${bookmark.user.id}`}
                     className="text-sm text-muted-foreground hover:text-foreground"
@@ -356,10 +360,10 @@ export default async function Page({ params }: Props) {
               creationId={bookmark.id}
               initialReviews={reviews}
               initialAverageRating={bookmark.averageRating}
-              currentUser={session?.user ? {
-                id: session.user.id,
-                name: session.user.name || "User",
-                avatar: (session.user as any).image || null,
+              currentUser={user ? {
+                id: user.id,
+                username: user.username || user.name || "User",
+                avatarUrl: user.avatar || null,
               } : null}
             />
           </div>

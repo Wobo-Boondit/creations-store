@@ -5,6 +5,16 @@ import { randomUUID } from "crypto";
 
 export const runtime = "nodejs";
 
+const ALLOWED_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  // NOTE: image/svg+xml removed — SVG can carry embedded <script> (stored XSS)
+];
+
+const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+
 export async function POST(request: NextRequest) {
   try {
     const user = await getCurrentUser();
@@ -14,27 +24,23 @@ export async function POST(request: NextRequest) {
     }
 
     const formData = await request.formData();
-    const file = formData.get("file") as File;
+    const file = formData.get("file") as File | null;
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // Validate file type (images only, no SVG — XSS risk)
-    const ALLOWED_SCREENSHOT_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
-    if (!ALLOWED_SCREENSHOT_TYPES.includes(file.type)) {
+    if (!ALLOWED_TYPES.includes(file.type)) {
       return NextResponse.json(
-        { error: "Only PNG, JPEG, WebP, or GIF images are allowed" },
-        { status: 400 }
+        { error: `File type ${file.type} not allowed` },
+        { status: 400 },
       );
     }
 
-    // Validate file size (max 10MB)
-    const MAX_SIZE = 10 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
       return NextResponse.json(
-        { error: "File size exceeds 10MB limit" },
-        { status: 400 }
+        { error: "File too large (max 10MB)" },
+        { status: 400 },
       );
     }
 
@@ -51,16 +57,12 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const url = await uploadImage(filename, buffer, file.type);
 
-    return NextResponse.json({
-      success: true,
-      url,
-      display_url: url,
-    });
+    return NextResponse.json({ url });
   } catch (error) {
-    console.error("Screenshot upload error:", error);
+    console.error("Upload error:", error);
     return NextResponse.json(
-      { error: "Failed to upload screenshot" },
-      { status: 500 }
+      { error: "Failed to upload image" },
+      { status: 500 },
     );
   }
 }

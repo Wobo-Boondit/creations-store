@@ -15,25 +15,25 @@ import { StarRating } from "@/components/star-rating";
 import { cn } from "@/lib/utils";
 
 interface Review {
-  id: number;
+  id: string;
   rating: number;
   comment: string | null;
   createdAt: Date | string;
   user: {
     id: string;
-    name: string;
-    avatar: string | null;
+    username: string;
+    avatarUrl: string | null;
   };
 }
 
 interface CreationReviewsProps {
-  creationId: number;
+  creationId: string;
   initialReviews: Review[];
   initialAverageRating: { average: number; count: number } | null;
   currentUser?: {
     id: string;
-    name: string;
-    avatar?: string | null;
+    username: string;
+    avatarUrl?: string | null;
   } | null;
 }
 
@@ -53,9 +53,9 @@ export function CreationReviews({
   const [comment, setComment] = useState("");
   const [hoveredStar, setHoveredStar] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
-  const [editingReviewId, setEditingReviewId] = useState<number | null>(null);
+  const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deletingReviewId, setDeletingReviewId] = useState<number | null>(null);
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
 
   // Find user's existing review
   const userReview = currentUser
@@ -109,8 +109,8 @@ export function CreationReviews({
             ...data,
             user: {
               id: currentUser.id,
-              name: currentUser.name || "User",
-              avatar: currentUser.avatar || null,
+              username: currentUser.username || "User",
+              avatarUrl: currentUser.avatarUrl || null,
             },
           },
           ...prev,
@@ -404,20 +404,20 @@ export function CreationReviews({
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    {review.user.avatar ? (
+                    {review.user.avatarUrl ? (
                       <img
-                        src={review.user.avatar}
-                        alt={review.user.name}
+                        src={review.user.avatarUrl}
+                        alt={review.user.username}
                         className="h-8 w-8 rounded-full"
                       />
                     ) : (
                       <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-                        {review.user.name[0]?.toUpperCase()}
+                        {review.user.username[0]?.toUpperCase()}
                       </div>
                     )}
                     <div>
                       <div className="font-medium text-sm">
-                        {review.user.name}
+                        {review.user.username}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {formatDate(review.createdAt)}

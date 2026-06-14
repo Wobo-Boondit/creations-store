@@ -9,6 +9,8 @@ import { Section, Container } from "@/components/craft";
 import { Bookmark, FolderKanban, Settings2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminPage() {
   const categories = await getAllCategories();
   const bookmarks = await getAllBookmarks();
@@ -89,7 +91,7 @@ export default async function AdminPage() {
                     Admin Controls
                   </span>
                 </Card>
-                <form action="/api/admin/logout">
+                <form action="/api/admin/logout" method="POST">
                   <Button
                     type="submit"
                     variant="outline"

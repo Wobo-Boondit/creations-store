@@ -1,14 +1,13 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getAllCategories } from "@/lib/data";
 import { CreationForm } from "@/components/user/creation-form";
 
 export default async function NewCreationPage() {
-  const session = await getServerSession(authOptions);
+  const user = await getCurrentUser();
 
-  if (!session?.user?.id) {
-    redirect("/auth/login");
+  if (!user?.id) {
+    redirect("/auth/signin");
   }
 
   const categories = await getAllCategories();
@@ -29,9 +28,9 @@ export default async function NewCreationPage() {
 
             <CreationForm
               categories={categories}
-              userId={session.user.id}
+              userId={user.id}
               mode="create"
-              username={session.user.name}
+              username={user.name}
             />
           </div>
         </div>

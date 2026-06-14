@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -18,7 +17,7 @@ import { StarRating } from "@/components/star-rating";
 
 interface CreationCardProps {
   creation: {
-    id: number;
+    id: string;
     url: string;
     title: string;
     description?: string | null;
@@ -30,7 +29,7 @@ interface CreationCardProps {
     };
     user?: {
       id: string;
-      name: string;
+      username: string;
     } | null;
     iconUrl?: string | null;
     favicon?: string | null;
@@ -58,16 +57,12 @@ export interface BookmarkCardProps extends CreationCardProps {
 export const CreationCard = ({ creation }: CreationCardProps) => {
   const [installDialogOpen, setInstallDialogOpen] = useState(false);
 
-  // Use iconUrl first, then fallback to favicon, then ogImage
   const iconSrc = creation.iconUrl || creation.favicon || creation.ogImage;
+  const accent = creation.themeColor || undefined;
 
-  // Get site URL for proxy links
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '');
-
-  // Use proxy URL if proxyCode is available, otherwise use direct URL
   const proxyUrl = creation.proxyCode ? `${siteUrl}/go/${creation.proxyCode}` : creation.url;
 
-  // Prepare QR code data (with proxy URL for tracking if available)
   const qrCodeData = {
     title: creation.title,
     url: proxyUrl,
@@ -75,154 +70,140 @@ export const CreationCard = ({ creation }: CreationCardProps) => {
     iconUrl: creation.iconUrl || "",
     themeColor: creation.themeColor || "",
     author: creation.author || "",
-    // Add tracking callback for install confirmation
     installConfirmUrl: creation.proxyCode ? `${siteUrl}/api/analytics/install` : undefined,
   };
 
-  // Create URL in format: id-slug (for SEO and handling duplicates)
   const detailsUrl = `/${creation.id}-${creation.slug}`;
 
   return (
     <>
-      <Link href={detailsUrl} className="block h-full">
+      <Link href={detailsUrl} className="group block h-full">
         <div
           className={cn(
-            "not-prose group relative flex flex-col overflow-hidden rounded-2xl border-2 bg-card transition-all duration-300 hover:shadow-xl hover:-translate-y-1 h-full",
+            "relative flex flex-col overflow-hidden rounded-md border border-border bg-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg h-full",
+            "[&[style*='--card-accent']]:hover:border-[var(--card-accent)]",
             creation.isArchived && "opacity-75 hover:opacity-100",
           )}
-          style={creation.themeColor ? {
-            borderColor: creation.themeColor,
+          style={accent ? {
+            // hover border color is controlled by group-hover via CSS var
+            ["--card-accent" as string]: accent,
           } : undefined}
         >
-        {/* App Icon Header */}
-        <div
-          className="relative p-6 pb-4"
-          style={creation.themeColor ? {
-            background: `linear-gradient(135deg, ${creation.themeColor}15 0%, ${creation.themeColor}05 100%)`,
-          } : undefined}
-        >
-          <div className="flex items-start justify-between">
-            {/* App Icon */}
+          {/* Accent top bar */}
+          {accent && (
             <div
-              className="flex items-center justify-center rounded-2xl border-2 bg-background p-3 shadow-sm"
-              style={creation.themeColor ? {
-                borderColor: creation.themeColor,
-              } : undefined}
-            >
-              {iconSrc ? (
-                <img
-                  src={iconSrc}
-                  alt={`${creation.title} icon`}
-                  width={64}
-                  height={64}
-                  className="h-16 w-16 rounded-xl"
-                />
-              ) : (
-                <AppWindow
-                  className="h-16 w-16 text-muted-foreground"
-                  aria-hidden="true"
-                />
-              )}
+              className="h-0.5 w-full"
+              style={{ backgroundColor: accent }}
+            />
+          )}
+
+          {/* Icon Header */}
+          <div className="relative p-4 pb-3">
+            <div className="flex items-start justify-between">
+              <div
+                className="flex items-center justify-center rounded-md border border-border bg-background p-2"
+                style={accent ? { borderColor: `${accent}40` } : undefined}
+              >
+                {iconSrc ? (
+                  <img
+                    src={iconSrc}
+                    alt={`${creation.title} icon`}
+                    width={48}
+                    height={48}
+                    className="h-12 w-12 rounded-md"
+                  />
+                ) : (
+                  <AppWindow
+                    className="h-12 w-12 text-muted-foreground"
+                    style={accent ? { color: `${accent}80` } : undefined}
+                    aria-hidden="true"
+                  />
+                )}
+              </div>
+
+              <div className="flex gap-1.5">
+                {creation.isFavorite && (
+                  <Star
+                    className="h-4 w-4"
+                    style={{ color: accent || undefined }}
+                    aria-label="Featured"
+                  />
+                )}
+                {creation.isArchived && (
+                  <Archive className="h-4 w-4 text-muted-foreground" aria-label="Archived" />
+                )}
+              </div>
             </div>
 
-            {/* Status Badges */}
-            <div className="flex gap-1.5">
-              {creation.isFavorite && (
-                <Badge
-                  variant="secondary"
-                  className="bg-yellow-500/10 text-yellow-500 backdrop-blur-sm"
+            {creation.category && (
+              <div className="mt-3">
+                <span
+                  className="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                  style={accent ? {
+                    backgroundColor: `${accent}18`,
+                    color: accent,
+                  } : {
+                    backgroundColor: "hsl(var(--muted))",
+                    color: "hsl(var(--muted-foreground))",
+                  }}
                 >
-                  <Star className="h-3 w-3" aria-label="Featured" />
-                </Badge>
-              )}
-              {creation.isArchived && (
-                <Badge
-                  variant="secondary"
-                  className="bg-gray-500/10 text-gray-500 backdrop-blur-sm"
-                >
-                  <Archive className="h-3 w-3" aria-label="Archived" />
-                </Badge>
-              )}
-            </div>
+                  {creation.category.name}
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* Category Badge */}
-          {creation.category && (
-            <div className="mt-3">
-              <Badge
-                variant="outline"
-                className="border-0 bg-background/50 backdrop-blur-sm text-xs font-medium"
-                style={creation.category.color ? {
-                  backgroundColor: `${creation.category.color}22`,
-                  color: creation.category.color,
-                } : undefined}
+          {/* Info Section */}
+          <div className="flex flex-1 flex-col p-4 pt-0 space-y-2">
+            <div className="space-y-1">
+              <h3
+                className="truncate text-sm font-medium text-foreground"
+                style={accent ? { color: accent } : undefined}
               >
-                {creation.category.name}
-              </Badge>
-            </div>
-          )}
-        </div>
-
-        {/* App Info Section */}
-        <div className="flex flex-1 flex-col p-4 space-y-3">
-          {/* Title and Description */}
-          <div className="space-y-1">
-            <h2 className="font-semibold text-lg leading-tight tracking-tight" style={creation.themeColor ? {
-              color: creation.themeColor,
-            } : undefined}>
-              {creation.title}
-            </h2>
-            {/* Author or User */}
-            {(creation.author || creation.user) && (
-              <span className="text-sm text-muted-foreground">
-                {creation.author ? `by ${creation.author}` : null}
-                {creation.author && creation.user ? " • " : null}
-                {creation.user && (
-                  <span className="hover:text-foreground transition-colors">
-                    added by {creation.user.name}
-                  </span>
-                )}
-              </span>
-            )}
-            {/* Rating */}
-            {creation.averageRating && creation.averageRating.count > 0 && (
-              <div>
+                {creation.title}
+              </h3>
+              {(creation.author || creation.user) && (
+                <p className="truncate text-xs text-muted-foreground">
+                  {creation.author ? `by ${creation.author}` : null}
+                  {creation.author && creation.user ? " · " : null}
+                  {creation.user && `added by ${creation.user.username}`}
+                </p>
+              )}
+              {creation.averageRating && creation.averageRating.count > 0 && (
                 <StarRating
                   rating={creation.averageRating.average}
                   count={creation.averageRating.count}
                   size="sm"
                 />
-              </div>
+              )}
+            </div>
+
+            {creation.description && (
+              <p className="line-clamp-2 text-xs text-muted-foreground">
+                {creation.description}
+              </p>
             )}
-          </div>
 
-          {/* Description */}
-          {creation.description && (
-            <p className="line-clamp-2 text-sm text-muted-foreground">
-              {creation.description}
-            </p>
-          )}
-
-          {/* Install Button */}
-          <div className="pt-2">
-            <Button
-              variant="default"
-              size="sm"
-              className="w-full font-medium"
-              style={creation.themeColor ? {
-                backgroundColor: creation.themeColor,
-              } : undefined}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setInstallDialogOpen(true);
-              }}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Install
-            </Button>
+            <div className="pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn("w-full chromatic-press", !accent && "")}
+                style={accent ? {
+                  borderColor: `${accent}40`,
+                  color: accent,
+                } : undefined}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setInstallDialogOpen(true);
+                }}
+              >
+                <Download className="h-3.5 w-3.5 mr-1.5" />
+                Install
+              </Button>
+            </div>
           </div>
-        </div>
         </div>
       </Link>
 
@@ -236,7 +217,7 @@ export const CreationCard = ({ creation }: CreationCardProps) => {
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col items-center space-y-4 py-4">
-            <div className="rounded-lg border-2 p-6 bg-white">
+            <div className="rounded-md border border-border p-6 bg-white">
               <QRCodeSVG
                 value={JSON.stringify(qrCodeData)}
                 size={250}

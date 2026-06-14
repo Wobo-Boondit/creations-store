@@ -27,7 +27,7 @@ interface Screenshot {
 }
 
 interface Creation {
-  id: number;
+  id: string;
   title: string;
   slug: string;
   url: string;
@@ -465,23 +465,24 @@ export function CreationForm({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="iconUrl">Icon URL</Label>
-            <div className="flex gap-2">
-              <Input
-                id="iconUrl"
-                name="iconUrl"
-                type="url"
-                value={formData.iconUrl}
-                onChange={(e) =>
-                  setFormData((prev) => ({ ...prev, iconUrl: e.target.value }))
-                }
-                placeholder="https://example.com/icon.png"
-                disabled={isUploadingIcon}
-              />
+            <Label htmlFor="iconUrl">Icon</Label>
+            <input type="hidden" name="iconUrl" value={formData.iconUrl} />
+            <div className="flex items-center gap-3">
+              {formData.iconUrl ? (
+                <img
+                  src={formData.iconUrl}
+                  alt="Icon preview"
+                  className="h-12 w-12 rounded-lg border object-cover"
+                />
+              ) : (
+                <div className="h-12 w-12 rounded-lg border flex items-center justify-center text-muted-foreground">
+                  <ImageIcon className="h-5 w-5" />
+                </div>
+              )}
               <Button
                 type="button"
                 variant="outline"
-                size="icon"
+                size="sm"
                 disabled={isUploadingIcon}
                 onClick={() => {
                   const input = document.createElement("input");
@@ -495,22 +496,20 @@ export function CreationForm({
                   };
                   input.click();
                 }}
-                title="Upload icon"
               >
                 {isUploadingIcon ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Uploading...
+                  </>
                 ) : (
-                  <Upload className="h-4 w-4" />
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    {formData.iconUrl ? "Replace" : "Upload"}
+                  </>
                 )}
               </Button>
-            </div>
-            {formData.iconUrl && (
-              <div className="mt-2 flex items-center gap-2">
-                <img
-                  src={formData.iconUrl}
-                  alt="Icon preview"
-                  className="h-12 w-12 rounded-lg border object-cover"
-                />
+              {formData.iconUrl && (
                 <Button
                   type="button"
                   variant="ghost"
@@ -520,8 +519,11 @@ export function CreationForm({
                   <X className="h-4 w-4 mr-1" />
                   Clear
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Upload from your device. Icons are stored on Boondit CDN.
+            </p>
           </div>
 
           <div className="space-y-2">

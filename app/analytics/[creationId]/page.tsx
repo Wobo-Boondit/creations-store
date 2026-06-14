@@ -6,8 +6,7 @@ import {
   getTopReferrers,
   getDeviceBreakdown,
 } from "@/lib/analytics";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { Section, Container } from "@/components/craft";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -28,14 +27,10 @@ interface AnalyticsPageProps {
 
 export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
   const { creationId } = await params;
-  const id = parseInt(creationId);
+  const id = creationId;
 
-  if (isNaN(id)) {
-    notFound();
-  }
-
-  // Get current session
-  const session = await getServerSession(authOptions);
+  // Get current user
+  const user = await getCurrentUser();
 
   // Get creation
   const creation = await getCreationById(id);
@@ -45,7 +40,7 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
   }
 
   // Check if user is the owner
-  if (!session || session.user?.id !== creation.userId) {
+  if (!user || user.id !== creation.userId) {
     redirect(`/creation/${id}`);
   }
 

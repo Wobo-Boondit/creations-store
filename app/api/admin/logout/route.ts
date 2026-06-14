@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-export async function GET() {
+export async function POST() {
   // Remove the authentication cookie
-  cookies().delete("boho_token");
+  const cookieStore = await cookies();
+  cookieStore.delete("boho_token");
 
   return NextResponse.redirect(new URL("/", process.env.NEXT_PUBLIC_SITE_URL));
 }

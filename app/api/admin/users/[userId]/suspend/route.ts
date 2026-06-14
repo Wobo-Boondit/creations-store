@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { db } from "@/db/client";
-import { users } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdmin } from "@/lib/auth";
 
 export async function POST(
   request: Request,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
     // Check if user is admin
@@ -15,7 +13,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { userId } = params;
+    const { userId } = await params;
     const body = await request.json();
     const { suspend } = body;
 
@@ -27,10 +25,13 @@ export async function POST(
     }
 
     // Update user suspension status
-    await db
-      .update(users)
-      .set({ isSuspended: suspend })
-      .where(eq(users.id, userId));
+    const supabase = createAdminClient();
+    const { error } = await supabase
+      .from("users")
+      .update({ is_suspended: suspend })
+      .eq("id", userId);
+
+    if (error) throw error;
 
     return NextResponse.json({
       success: true,

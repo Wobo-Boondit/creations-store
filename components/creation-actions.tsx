@@ -22,7 +22,7 @@ interface CreationActionsProps {
   author?: string | null;
   pageUrl: string;
   proxyCode?: string | null;
-  creationId?: number;
+  creationId?: string;
   isOwner?: boolean;
 }
 

@@ -1,21 +1,16 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/react";
-import Image from "next/image";
 import Link from "next/link";
 import Logo from "@/public/logo.svg";
 import "./globals.css";
-import { Manrope as Font } from "next/font/google";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-
-import { ThemeProvider } from "@/components/theme-provider";
-import { ThemeToggle } from "@/components/theme-toggle";
-
+import local from "next/font/local";
+import { getCurrentUser } from "@/lib/auth";
 import { directory } from "@/directory.config";
 
-const font = Font({
-  subsets: ["latin"],
+const font = local({
+  src: "./fonts/PowerGrotesk-Regular.ttf",
   display: "swap",
+  variable: "--font-power-grotesk",
 });
 
 export const metadata: Metadata = {
@@ -29,68 +24,61 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await getServerSession(authOptions);
+  const user = await getCurrentUser();
 
   return (
     <html lang="en">
-      <body className={`${font.className} antialiased`}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <Header session={session} />
-          {children}
-          <Footer />
-        </ThemeProvider>
+      <body className={`${font.className} ${font.variable} antialiased`}>
+        <Header user={user} />
+        {children}
+        <Footer />
         <Analytics />
       </body>
     </html>
   );
 }
 
-const Header = async ({ session }: { session: any }) => {
+const Header = async ({ user }: { user: any }) => {
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-sm">
-      <div className="flex h-12 items-center justify-between px-4 md:px-6">
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 font-semibold text-sm hover:opacity-80 transition-opacity">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur">
+      <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
+        <Link
+          href="/"
+          className="flex items-center gap-2 font-semibold text-sm hover:opacity-80 transition-opacity"
+        >
           <span className="text-base font-bold">{directory.name}</span>
         </Link>
 
-        {/* User Menu */}
         <nav className="flex items-center gap-2">
           <Link
             href="https://buymeacoffee.com/boondit"
             target="_blank"
             rel="noopener noreferrer"
-            className="hidden sm:block text-sm font-medium text-amber-600 hover:text-amber-700 dark:text-amber-500 dark:hover:text-amber-400 transition-colors px-3 py-1.5 rounded-md hover:bg-accent"
+            className="hidden sm:block text-sm font-medium text-amber-600 dark:text-amber-500 hover:opacity-80 transition-opacity px-3 py-1.5 rounded-md hover:bg-card"
           >
-            ☕ Donate
+            Donate
           </Link>
-          {session?.user ? (
+          {user ? (
             <>
               <Link
                 href="/dashboard"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-accent"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-card"
               >
                 Dashboard
               </Link>
               <Link
-                href="/auth/signout"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-accent"
+                href="/dashboard/settings"
+                className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:brightness-110 transition-all"
               >
-                Sign Out
+                Settings
               </Link>
             </>
           ) : (
             <Link
               href="/auth/signin"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-accent"
+              className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:brightness-110 transition-all"
             >
-              <span className="sm:hidden">Sign In</span>
-              <span className="hidden sm:inline">Sign In with Discord</span>
+              Sign In
             </Link>
           )}
         </nav>
@@ -101,26 +89,23 @@ const Header = async ({ session }: { session: any }) => {
 
 const Footer = () => {
   return (
-    <footer className="border-t bg-muted/40">
-      <div className="flex items-center justify-between gap-3 px-6 py-4">
-        <div className="grid gap-1 text-xs text-muted-foreground">
-          <p>
-            © {new Date().getFullYear()} {directory.name}. All rights reserved.
-          </p>
-          <p>
-            This is a fan website and is not affiliated with, endorsed by, or associated with Rabbit Inc.
-          </p>
-          <div className="flex gap-3">
-            <Link href="/tos" className="hover:text-foreground transition-colors">
-              Terms of Service
-            </Link>
-            <span>•</span>
-            <Link href="/privacy" className="hover:text-foreground transition-colors">
-              Privacy Policy
-            </Link>
-          </div>
+    <footer className="border-t border-border py-6 text-center text-xs text-muted-foreground">
+      <div className="mx-auto max-w-6xl px-4 flex items-center justify-between">
+        <p>
+          © {new Date().getFullYear()} {directory.name}. All rights reserved.
+        </p>
+        <p className="hidden sm:block">
+          This is a fan website and is not affiliated with Rabbit Inc.
+        </p>
+        <div className="flex gap-3">
+          <Link href="/tos" className="hover:text-foreground transition-colors">
+            Terms
+          </Link>
+          <span>•</span>
+          <Link href="/privacy" className="hover:text-foreground transition-colors">
+            Privacy
+          </Link>
         </div>
-        <ThemeToggle />
       </div>
     </footer>
   );

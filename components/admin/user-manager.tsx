@@ -4,13 +4,10 @@ import { Badge } from "@/components/ui/badge";
 
 interface User {
   id: string;
-  name: string;
-  email: string;
-  username: string | null;
-  isAdmin: boolean;
-  isSuspended: boolean;
+  username: string;
+  avatarUrl: string | null;
   creationCount: number;
-  createdAt: Date;
+  createdAt: string;
 }
 
 interface UserManagerProps {
@@ -23,8 +20,7 @@ export function UserManager({ users }: UserManagerProps) {
       <TableHeader>
         <TableRow>
           <TableHead>Name</TableHead>
-          <TableHead>Email</TableHead>
-          <TableHead>Creations</TableHead>
+                    <TableHead>Creations</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Joined</TableHead>
           <TableHead className="text-right">Actions</TableHead>
@@ -40,22 +36,13 @@ export function UserManager({ users }: UserManagerProps) {
         ) : (
           users.map((user) => (
             <TableRow key={user.id}>
-              <TableCell className="font-medium">{user.name}</TableCell>
-              <TableCell>{user.email}</TableCell>
+              <TableCell className="font-medium">{user.username}</TableCell>
               <TableCell>
                 <Badge variant="secondary">{user.creationCount}</Badge>
               </TableCell>
               <TableCell>
                 <div className="flex gap-1">
-                  {user.isAdmin && (
-                    <Badge variant="outline" className="text-xs">Admin</Badge>
-                  )}
-                  {user.isSuspended && (
-                    <Badge variant="destructive" className="text-xs">Suspended</Badge>
-                  )}
-                  {!user.isAdmin && !user.isSuspended && (
-                    <span className="text-xs text-muted-foreground">User</span>
-                  )}
+                  <span className="text-xs text-muted-foreground">User</span>
                 </div>
               </TableCell>
               <TableCell>
