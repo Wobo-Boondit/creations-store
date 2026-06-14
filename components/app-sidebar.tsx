@@ -161,7 +161,7 @@ export function SidebarContent({ categories, className, onSelect }: AppSidebarPr
 
 export function AppSidebar(props: AppSidebarProps) {
   return (
-    <aside className={cn("flex h-[calc(100vh-3rem)] w-64 flex-col border-r bg-background", props.className)}>
+    <aside className={cn("flex h-[calc(100vh-3.5rem)] w-64 flex-col border-r border-border bg-background", props.className)}>
       <SidebarContent {...props} />
     </aside>
   );
