@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { updateProfile } from "@/lib/actions";
+import { updateProfile, signOut } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Check } from "lucide-react";
+import { Loader2, Check, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import type { CurrentUser } from "@/lib/auth";
 
@@ -132,6 +132,20 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
           </div>
         </div>
       </div>
+
+      {/* Sign out */}
+      <form action={signOut} className="rounded-xl border border-red-900/30 bg-red-950/20 p-6 flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-red-400">Sign Out</h3>
+          <p className="text-sm text-muted-foreground">
+            Sign out of your Boondit account on this device
+          </p>
+        </div>
+        <Button type="submit" variant="outline" className="border-red-900/50 text-red-400 hover:bg-red-900/20 hover:text-red-400">
+          <LogOut className="h-4 w-4 mr-2" />
+          Sign Out
+        </Button>
+      </form>
     </div>
   );
 }

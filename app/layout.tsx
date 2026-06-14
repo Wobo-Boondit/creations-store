@@ -5,7 +5,6 @@ import Logo from "@/public/logo.svg";
 import "./globals.css";
 import local from "next/font/local";
 import { getCurrentUser } from "@/lib/auth";
-import { signOut } from "@/lib/actions";
 import { directory } from "@/directory.config";
 
 const font = local({
@@ -69,18 +68,10 @@ const Header = async ({ user }: { user: any }) => {
               </Link>
               <Link
                 href="/dashboard/settings"
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-card"
+                className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:brightness-110 transition-all"
               >
                 Settings
               </Link>
-              <form action={signOut} className="inline">
-                <button
-                  type="submit"
-                  className="text-sm text-secondary hover:opacity-80 transition-opacity px-3 py-1.5 rounded-md hover:bg-card"
-                >
-                  Sign Out
-                </button>
-              </form>
             </>
           ) : (
             <Link
