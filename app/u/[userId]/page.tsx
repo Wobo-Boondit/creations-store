@@ -5,11 +5,12 @@ import { CreationGrid } from "@/components/creation-grid";
 import { User, Calendar, Layers } from "lucide-react";
 
 type Props = {
-  params: { userId: string };
+  params: Promise<{ userId: string }>;
 };
 
 export default async function UserProfilePage({ params }: Props) {
-  const profile = await getUserProfile(params.userId);
+  const { userId } = await params;
+  const profile = await getUserProfile(userId);
 
   if (!profile) {
     notFound();

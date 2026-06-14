@@ -34,7 +34,7 @@ export async function GET(request: Request) {
   } catch {
     return NextResponse.redirect(new URL("/auth/signin?error=config", requestUrl.origin));
   }
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
 
   const success = NextResponse.redirect(new URL("/dashboard", origin));
 

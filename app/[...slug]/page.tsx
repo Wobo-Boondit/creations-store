@@ -38,14 +38,15 @@ async function resolveCreation(slugPath: string) {
 }
 
 type Props = {
-  params: { slug: string[] };
+  params: Promise<{ slug: string[] }>;
 };
 
 export async function generateMetadata(
   { params }: Props,
   parent: ResolvingMetadata,
 ): Promise<Metadata> {
-  const slug = params.slug.join('/');
+  const { slug: slugArr } = await params;
+  const slug = slugArr.join('/');
 
   const bookmark = await resolveCreation(slug);
 
@@ -82,7 +83,8 @@ export async function generateMetadata(
 }
 
 export default async function Page({ params }: Props) {
-  const slug = params.slug.join('/');
+  const { slug: slugArr } = await params;
+  const slug = slugArr.join('/');
 
   const bookmark = await resolveCreation(slug);
 

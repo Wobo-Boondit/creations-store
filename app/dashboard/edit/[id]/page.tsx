@@ -7,7 +7,7 @@ import { BarChart3 } from "lucide-react";
 import Link from "next/link";
 
 type Props = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
 export default async function EditCreationPage({ params }: Props) {
@@ -17,7 +17,8 @@ export default async function EditCreationPage({ params }: Props) {
     redirect("/auth/signin");
   }
 
-  const creation = await getCreationById(params.id as string);
+  const { id } = await params;
+  const creation = await getCreationById(id as string);
 
   if (!creation) {
     notFound();
@@ -45,7 +46,7 @@ export default async function EditCreationPage({ params }: Props) {
                 </p>
               </div>
               <Button variant="outline" asChild>
-                <Link href={`/analytics/${params.id}`}>
+                <Link href={`/analytics/${id}`}>
                   <BarChart3 className="h-4 w-4 mr-2" />
                   View Analytics
                 </Link>

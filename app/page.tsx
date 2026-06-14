@@ -19,8 +19,10 @@ import { Sparkles, TrendingUp, Clock, FolderKanban } from "lucide-react";
 export default async function Home({
   searchParams,
 }: {
-  searchParams: { category?: string; search?: string; sort?: string };
+  searchParams: Promise<{ category?: string; search?: string; sort?: string }>;
 }) {
+  const searchParamsResolved = await searchParams;
+
   const [bookmarks, categories] = await Promise.all([
     getPublishedBookmarks(),
     getAllCategories(),
@@ -29,12 +31,12 @@ export default async function Home({
   const filteredBookmarks = bookmarks
     .filter(
       (bookmark) =>
-        !searchParams.category ||
-        bookmark.category?.id.toString() === searchParams.category,
+        !searchParamsResolved.category ||
+        bookmark.category?.id.toString() === searchParamsResolved.category,
     )
     .filter((bookmark) => {
-      if (!searchParams.search) return true;
-      const searchTerm = searchParams.search.toLowerCase();
+      if (!searchParamsResolved.search) return true;
+      const searchTerm = searchParamsResolved.search.toLowerCase();
       return (
         bookmark.title.toLowerCase().includes(searchTerm) ||
         bookmark.description?.toLowerCase().includes(searchTerm) ||
@@ -44,7 +46,7 @@ export default async function Home({
       );
     });
 
-  const sortParam = searchParams.sort || "newest";
+  const sortParam = searchParamsResolved.sort || "newest";
   const sortedBookmarks = [...filteredBookmarks].sort((a, b) => {
     switch (sortParam) {
       case "oldest":
@@ -129,7 +131,7 @@ export default async function Home({
           <MobileMenu categories={formattedCategories} />
 
           {/* Top Creations Section */}
-          {!searchParams.search && !searchParams.category && (
+          {!searchParamsResolved.search && !searchParamsResolved.category && (
             <div className="mb-10 space-y-4">
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-primary" />
@@ -149,7 +151,7 @@ export default async function Home({
           )}
 
           {/* Featured Section */}
-          {featuredBookmarks.length > 0 && !searchParams.search && !searchParams.category && (
+          {featuredBookmarks.length > 0 && !searchParamsResolved.search && !searchParamsResolved.category && (
             <div className="mb-10 space-y-4">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
@@ -169,7 +171,7 @@ export default async function Home({
           )}
 
           {/* Category Sections */}
-          {!searchParams.search && !searchParams.category && categories.length > 0 && (
+          {!searchParamsResolved.search && !searchParamsResolved.category && categories.length > 0 && (
             <div className="space-y-10">
               {categories.map((category) => {
                 const categoryBookmarks = bookmarksByCategory[category.id];
@@ -201,12 +203,12 @@ export default async function Home({
           )}
 
           {/* Filtered Results */}
-          {(searchParams.search || searchParams.category) && (
+          {(searchParamsResolved.search || searchParamsResolved.category) && (
             <div className="space-y-6">
               <div className="flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-primary" />
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                  {searchParams.search ? "Search Results" : "Category Results"}
+                  {searchParamsResolved.search ? "Search Results" : "Category Results"}
                 </h2>
                 <span className="text-xs text-muted-foreground/60">
                   {sortedBookmarks.length}
@@ -230,8 +232,8 @@ export default async function Home({
                     </div>
                     <h3 className="mt-6 text-lg font-semibold">No creations found</h3>
                     <p className="mt-2 text-center text-sm text-muted-foreground">
-                      {searchParams.search
-                        ? `No creations match your search "${searchParams.search}"`
+                      {searchParamsResolved.search
+                        ? `No creations match your search "${searchParamsResolved.search}"`
                         : `No creations in this category yet`}
                     </p>
                   </div>

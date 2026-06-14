@@ -4,7 +4,7 @@ import { isAdmin } from "@/lib/auth";
 
 export async function POST(
   request: Request,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
     // Check if user is admin
@@ -13,7 +13,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { userId } = params;
+    const { userId } = await params;
     const body = await request.json();
     const { suspend } = body;
 
