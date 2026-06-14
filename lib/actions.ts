@@ -38,6 +38,20 @@ function isCdnUrl(url: string): boolean {
   }
 }
 
+/**
+ * Validate that a creation URL uses http/https scheme.
+ * Prevents javascript:, data:, file: schemes that enable XSS / open redirect.
+ */
+function isValidCreationUrl(url: string): boolean {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 // Helper function to fetch metadata for bulk upload
 async function generateContent(url: string) {
   try {
@@ -370,6 +384,11 @@ export async function createCreation(
       return { error: "Icon must be uploaded through Boondit CDN" };
     }
 
+    // Validate creation URL scheme (prevent javascript:/data: XSS)
+    if (!isValidCreationUrl(formData.url)) {
+      return { error: "URL must be a valid http or https address" };
+    }
+
     let slug = formData.slug;
     if (!slug) {
       slug = generateSlug(formData.title);
@@ -463,6 +482,11 @@ export async function updateCreation(
     // Validate icon URL comes from our CDN
     if (formData.iconUrl && !isCdnUrl(formData.iconUrl)) {
       return { error: "Icon must be uploaded through Boondit CDN" };
+    }
+
+    // Validate creation URL scheme (prevent javascript:/data: XSS)
+    if (!isValidCreationUrl(formData.url)) {
+      return { error: "URL must be a valid http or https address" };
     }
 
     let slug = formData.slug;
@@ -795,6 +819,10 @@ export async function scrapeUrl(
     url: string;
   },
 ): Promise<ActionState> {
+  // Require authentication
+  const user = await getCurrentUser();
+  if (!user) return { error: "Unauthorized" };
+
   try {
     const url = formData.url;
     if (!url) return { error: "URL is required" };

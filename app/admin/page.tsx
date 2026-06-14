@@ -91,7 +91,7 @@ export default async function AdminPage() {
                     Admin Controls
                   </span>
                 </Card>
-                <form action="/api/admin/logout">
+                <form action="/api/admin/logout" method="POST">
                   <Button
                     type="submit"
                     variant="outline"

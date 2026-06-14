@@ -1,7 +1,50 @@
 import { NextResponse } from "next/server";
 import { load } from "cheerio";
+import { getCurrentUser } from "@/lib/auth";
+
+// Block requests to internal/private IPs to prevent SSRF
+function isPrivateUrl(url: URL): boolean {
+  const host = url.hostname;
+  // Block loopback, link-local, private ranges, cloud metadata
+  if (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host.startsWith("169.254.") || // link-local
+    host.startsWith("10.") ||
+    host.startsWith("192.168.") ||
+    host.startsWith("172.16.") ||
+    host.startsWith("172.17.") ||
+    host.startsWith("172.18.") ||
+    host.startsWith("172.19.") ||
+    host.startsWith("172.20.") ||
+    host.startsWith("172.21.") ||
+    host.startsWith("172.22.") ||
+    host.startsWith("172.23.") ||
+    host.startsWith("172.24.") ||
+    host.startsWith("172.25.") ||
+    host.startsWith("172.26.") ||
+    host.startsWith("172.27.") ||
+    host.startsWith("172.28.") ||
+    host.startsWith("172.29.") ||
+    host.startsWith("172.30.") ||
+    host.startsWith("172.31.") ||
+    host === "metadata.google.internal" ||
+    host.endsWith(".internal")
+  ) {
+    return true;
+  }
+  return false;
+}
 
 export async function GET(request: Request) {
+  // Require authentication — prevent anonymous SSRF
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const url = searchParams.get("url");
@@ -10,28 +53,41 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
 
-    // Validate and normalize URL
+    // Validate and normalize URL — http/https only
     let validUrl: URL;
     try {
       validUrl = new URL(url);
-      // Add https if no protocol is specified
       if (!validUrl.protocol || validUrl.protocol === ":") {
         validUrl = new URL(`https://${url}`);
       }
-    } catch (error) {
-      console.error("Invalid URL format:", error);
+    } catch {
       return NextResponse.json(
         { error: "Invalid URL format" },
         { status: 400 },
       );
     }
 
-    console.log("Fetching metadata for URL:", validUrl.toString());
+    // Block non-http(s) schemes (prevents file:, javascript:, etc.)
+    if (validUrl.protocol !== "http:" && validUrl.protocol !== "https:") {
+      return NextResponse.json(
+        { error: "Only http and https URLs are allowed" },
+        { status: 400 },
+      );
+    }
+
+    // Block SSRF — no internal/private IPs
+    if (isPrivateUrl(validUrl)) {
+      return NextResponse.json(
+        { error: "URL not accessible" },
+        { status: 403 },
+      );
+    }
 
     const response = await fetch(validUrl.toString(), {
+      signal: AbortSignal.timeout(8000),
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (compatible; DirectoryBot/1.0; +http://localhost)",
+          "Mozilla/5.0 (compatible; CreationsBot/1.0)",
       },
     });
 

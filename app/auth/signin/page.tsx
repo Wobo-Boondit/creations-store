@@ -8,14 +8,12 @@ export default function SignInPage() {
 
   const handleSignIn = async () => {
     setLoading(true);
+    // No cookieOptions/domain here — the PKCE code verifier must be
+    // stored on creations.boondit.site so the callback can read it.
+    // Session cookies get .boondit.site domain in the callback instead.
     const supabase = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookieOptions: {
-          domain: ".boondit.site",
-        },
-      }
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
 
     await supabase.auth.signInWithOAuth({

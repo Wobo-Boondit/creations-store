@@ -23,13 +23,12 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
   const origin = resolveOrigin(request);
-
-  // Build the redirect response up front so we can attach Supabase
-  // cookie writes to it. Using next/headers cookies().set() in a Route
-  // Handler that returns NextResponse.redirect() will DROP the cookies —
-  // the session never reaches the browser.
-  const success = NextResponse.redirect(new URL("/dashboard", origin));
   const cookieStore = cookies();
+
+  console.log("[callback] hit. code:", code ? "present" : "missing");
+  console.log("[callback] cookies:", cookieStore.getAll().map(c => c.name).join(", "));
+
+  const success = NextResponse.redirect(new URL("/dashboard", origin));
 
   if (code) {
     const supabase = createServerClient(
@@ -42,6 +41,7 @@ export async function GET(request: Request) {
           },
           setAll(cookiesToSet: { name: string; value: string; options?: any }[]) {
             for (const { name, value, options } of cookiesToSet) {
+              console.log("[callback] SET cookie:", name, "len:", value.length);
               success.cookies.set(name, value, {
                 ...options,
                 domain: ".boondit.site",
@@ -52,12 +52,14 @@ export async function GET(request: Request) {
       }
     );
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
+      console.log("[callback] exchange ERROR:", error.message);
       return NextResponse.redirect(
         new URL(`/auth/signin?error=${encodeURIComponent(error.message)}`, origin)
       );
     }
+    console.log("[callback] exchange OK, user:", data?.user?.email ?? "none");
   }
 
   return success;

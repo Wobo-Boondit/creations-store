@@ -10,7 +10,7 @@ const ALLOWED_TYPES = [
   "image/jpeg",
   "image/webp",
   "image/gif",
-  "image/svg+xml",
+  // NOTE: image/svg+xml removed — SVG can carry embedded <script> (stored XSS)
 ];
 
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB

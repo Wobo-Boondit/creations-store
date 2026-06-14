@@ -20,10 +20,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    // Validate file type (images only)
-    if (!file.type.startsWith("image/")) {
+    // Validate file type (images only, no SVG — XSS risk)
+    const ALLOWED_SCREENSHOT_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+    if (!ALLOWED_SCREENSHOT_TYPES.includes(file.type)) {
       return NextResponse.json(
-        { error: "Only image files are allowed" },
+        { error: "Only PNG, JPEG, WebP, or GIF images are allowed" },
         { status: 400 }
       );
     }
@@ -48,12 +49,10 @@ export async function POST(request: NextRequest) {
       url,
       display_url: url,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Screenshot upload error:", error);
     return NextResponse.json(
-      {
-        error: error.message || "Failed to upload screenshot. Please try again."
-      },
+      { error: "Failed to upload screenshot" },
       { status: 500 }
     );
   }

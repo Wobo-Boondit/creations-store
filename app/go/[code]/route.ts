@@ -91,6 +91,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
     clicked_at: new Date().toISOString(),
   });
 
+  // Validate URL scheme before redirect (prevent open redirect / javascript:)
+  try {
+    const targetUrl = new URL(creation.url);
+    if (targetUrl.protocol !== "http:" && targetUrl.protocol !== "https:") {
+      return redirect("/?error=invalid-url");
+    }
+  } catch {
+    return redirect("/?error=invalid-url");
+  }
+
   // Redirect to the actual creation URL
   return redirect(creation.url);
 }
