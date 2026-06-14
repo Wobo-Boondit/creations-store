@@ -33,7 +33,7 @@ export function checkRateLimit(ip: string): { allowed: boolean; retryAfterMs: nu
 // Clean up stale entries periodically to prevent memory growth
 setInterval(() => {
   const now = Date.now();
-  for (const [ip, entry] of attempts) {
+  attempts.forEach((entry, ip) => {
     if (now > entry.resetAt) attempts.delete(ip);
-  }
+  });
 }, 5 * 60_000); // every 5 minutes
