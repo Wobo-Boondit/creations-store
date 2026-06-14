@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { MetadataRoute } from "next";
 import { getAllBookmarks } from "@/lib/data";
 import { directory } from "@/directory.config";

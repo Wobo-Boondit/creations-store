@@ -44,22 +44,21 @@ import { Plus, Upload, Loader2, Trash2 } from "lucide-react";
 interface Category {
   id: string;
   name: string;
-  slug: string;
   description: string | null;
+  slug: string;
   color: string | null;
   icon: string | null;
-  createdAt: Date;
-  updatedAt: Date | null;
+  legacyId: string | null;
 }
 
 interface Bookmark {
-  id: number;
+  id: string;
   title: string;
   slug: string;
   url: string;
   description: string | null;
   overview: string | null;
-  search_results: string | null;
+  searchResults: string | null;
   favicon: string | null;
   iconUrl: string | null;
   themeColor: string | null;
@@ -71,8 +70,8 @@ interface Bookmark {
   status: string;
   isFavorite: boolean;
   isArchived: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: string;
+  updatedAt: string;
   notes: string | null;
 }
 
@@ -145,7 +144,7 @@ export function BookmarkManager({
     url: "",
     description: "",
     overview: "",
-    search_results: "",
+    searchResults: "",
     favicon: "",
     ogImage: "",
     categoryId: "none",
@@ -172,7 +171,7 @@ export function BookmarkManager({
         author: formData.get("author") as string || "",
         screenshotUrl: formData.get("screenshotUrl") as string || "",
         ogImage: formData.get("ogImage") as string,
-        search_results: formData.get("search_results") as string,
+        searchResults: formData.get("searchResults") as string,
         categoryId: formData.get("categoryId") as string,
         userId: formData.get("userId") as string || "",
         status: "published" as const,
@@ -215,7 +214,7 @@ export function BookmarkManager({
           url: selectedBookmark.url,
           description: selectedBookmark.description || "",
           overview: selectedBookmark.overview || "",
-          search_results: selectedBookmark.search_results || "",
+          searchResults: selectedBookmark.searchResults || "",
           favicon: selectedBookmark.favicon || "",
           ogImage: selectedBookmark.ogImage || "",
           categoryId: selectedBookmark.categoryId?.toString() || "none",
@@ -235,7 +234,7 @@ export function BookmarkManager({
       url: "",
       description: "",
       overview: "",
-      search_results: "",
+      searchResults: "",
       favicon: "",
       ogImage: "",
       categoryId: "none",

@@ -1,416 +1,599 @@
-import { db } from "@/db/client";
-import { creations, creationScreenshots, creationViews, creationReviews, categories, users } from "@/db/schema";
-import { eq, and, sql, ne, desc } from "drizzle-orm";
+import { createAdminClient } from "@/lib/supabase/admin";
 
-export type Creation = typeof creations.$inferSelect;
-export type Category = typeof categories.$inferSelect;
-export type User = typeof users.$inferSelect;
-export type CreationScreenshot = typeof creationScreenshots.$inferSelect;
-export type CreationView = typeof creationViews.$inferSelect;
-export type CreationReview = typeof creationReviews.$inferSelect;
+// ============================================================
+// Types (camelCase to match old Drizzle schema)
+// ============================================================
 
-// Legacy type aliases for backward compatibility during migration
+export type Creation = {
+  id: string;
+  legacyId: number | null;
+  url: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  categoryId: string | null;
+  tags: string | null;
+  userId: string | null;
+  status: "draft" | "published";
+  iconUrl: string | null;
+  themeColor: string | null;
+  author: string | null;
+  screenshotUrl: string | null;
+  favicon: string | null;
+  screenshot: string | null;
+  overview: string | null;
+  ogImage: string | null;
+  ogTitle: string | null;
+  ogDescription: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastVisited: string | null;
+  notes: string | null;
+  isArchived: boolean;
+  isFavorite: boolean;
+  searchResults: string | null;
+  views: number;
+  proxyCode: string | null;
+  isFlagged: boolean;
+  flagReason: string | null;
+};
+
+export type Category = {
+  id: string;
+  name: string;
+  description: string | null;
+  slug: string;
+  color: string | null;
+  icon: string | null;
+  legacyId: string | null;
+};
+
+export type User = {
+  id: string;
+  username: string;
+  avatarUrl: string | null;
+  createdAt: string;
+};
+
+export type CreationScreenshot = {
+  id: string;
+  creationId: string;
+  url: string;
+  isMain: boolean;
+  createdAt: string;
+};
+
+export type CreationReview = {
+  id: string;
+  creationId: string;
+  userId: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreationReviewWithUser = CreationReview & { user: User };
+
 export type Bookmark = Creation;
 
-export async function getAllCreations(): Promise<(Creation & { category: Category | null; user: User | null })[]> {
-  const results = await db
-    .select()
-    .from(creations)
-    .leftJoin(categories, eq(creations.categoryId, categories.id))
-    .leftJoin(users, eq(creations.userId, users.id))
-    .where(and(eq(creations.status, "published"), ne(users.isSuspended, true)));
+// ============================================================
+// Helper: transform raw Supabase row to camelCase Creation
+// ============================================================
+function mapCreation(row: any): Creation {
+  return {
+    id: row.id,
+    legacyId: row.legacy_id,
+    url: row.url,
+    title: row.title,
+    slug: row.slug,
+    description: row.description,
+    categoryId: row.category_id,
+    tags: row.tags,
+    userId: row.user_id,
+    status: row.status,
+    iconUrl: row.icon_url,
+    themeColor: row.theme_color,
+    author: row.author,
+    screenshotUrl: row.screenshot_url,
+    favicon: row.favicon,
+    screenshot: row.screenshot,
+    overview: row.overview,
+    ogImage: row.og_image,
+    ogTitle: row.og_title,
+    ogDescription: row.og_description,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    lastVisited: row.last_visited,
+    notes: row.notes,
+    isArchived: row.is_archived,
+    isFavorite: row.is_favorite,
+    searchResults: row.search_results,
+    views: row.views,
+    proxyCode: row.proxy_code,
+    isFlagged: row.is_flagged,
+    flagReason: row.flag_reason,
+  };
+}
 
-  return results.map(row => ({
-    ...row.creations,
-    category: row.categories,
-    user: row.users,
+function mapCategory(row: any): Category {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    slug: row.slug,
+    color: row.color,
+    icon: row.icon,
+    legacyId: row.legacy_id,
+  };
+}
+
+function mapUser(row: any): User | null {
+  if (!row) return null;
+  return {
+    id: row.id,
+    username: row.username,
+    avatarUrl: row.avatar_url,
+    createdAt: row.created_at,
+  };
+}
+
+function mapScreenshot(row: any): CreationScreenshot {
+  return {
+    id: row.id,
+    creationId: row.creation_id,
+    url: row.url,
+    isMain: row.is_main,
+    createdAt: row.created_at,
+  };
+}
+
+// ============================================================
+// Helper: get admin client
+// ============================================================
+function db() {
+  return createAdminClient();
+}
+
+// ============================================================
+// Creation queries
+// ============================================================
+
+export async function getAllCreations(): Promise<(Creation & { category: Category | null; user: User | null })[]> {
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_creations")
+    .select("*, store_categories(*), users(id, username, avatar_url, created_at)")
+    .eq("status", "published")
+    .order("created_at", { ascending: false });
+
+  return (data || []).map((row: any) => ({
+    ...mapCreation(row),
+    category: row.store_categories ? mapCategory(row.store_categories) : null,
+    user: mapUser(row.users),
   }));
 }
 
 export async function getAllCategories(): Promise<Category[]> {
-  return await db.select().from(categories);
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_categories")
+    .select("*")
+    .order("name", { ascending: true });
+
+  return (data || []).map(mapCategory);
 }
 
-export async function getCreationById(id: number): Promise<(Creation & { category: Category | null; user: User | null; screenshots: CreationScreenshot[]; averageRating: { average: number; count: number } | null }) | null> {
-  const results = await db
-    .select()
-    .from(creations)
-    .leftJoin(categories, eq(creations.categoryId, categories.id))
-    .leftJoin(users, eq(creations.userId, users.id))
-    .where(and(eq(creations.id, id), ne(users.isSuspended, true)))
-    .limit(1);
+export async function getCreationById(id: string): Promise<(Creation & { category: Category | null; user: User | null; screenshots: CreationScreenshot[]; averageRating: { average: number; count: number } | null }) | null> {
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_creations")
+    .select("*, store_categories(*), users(id, username, avatar_url, created_at)")
+    .eq("id", id)
+    .single();
 
-  if (results.length === 0) {
-    return null;
-  }
+  if (!data) return null;
 
-  // Fetch screenshots for this creation
   const screenshots = await getCreationScreenshots(id);
-
-  // Fetch average rating
   const averageRating = await getCreationAverageRating(id);
 
   return {
-    ...results[0].creations,
-    category: results[0].categories,
-    user: results[0].users,
+    ...mapCreation(data),
+    category: data.store_categories ? mapCategory(data.store_categories) : null,
+    user: mapUser(data.users),
     screenshots,
     averageRating,
   };
 }
 
-export async function getCreationBySlug(slug: string): Promise<(Creation & { category: Category | null; user: User | null }) | null> {
-  const results = await db
-    .select()
-    .from(creations)
-    .leftJoin(categories, eq(creations.categoryId, categories.id))
-    .leftJoin(users, eq(creations.userId, users.id))
-    .where(eq(creations.slug, slug))
-    .limit(1);
+export async function getCreationBySlug(slug: string): Promise<(Creation & { category: Category | null; user: User | null; screenshots: CreationScreenshot[]; averageRating: { average: number; count: number } | null }) | null> {
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_creations")
+    .select("*, store_categories(*), users(id, username, avatar_url, created_at)")
+    .eq("slug", slug)
+    .single();
 
-  if (results.length === 0) {
-    return null;
-  }
+  if (!data) return null;
+
+  const screenshots = await getCreationScreenshots(data.id);
+  const averageRating = await getCreationAverageRating(data.id);
 
   return {
-    ...results[0].creations,
-    category: results[0].categories,
-    user: results[0].users,
+    ...mapCreation(data),
+    category: data.store_categories ? mapCategory(data.store_categories) : null,
+    user: mapUser(data.users),
+    screenshots,
+    averageRating,
   };
 }
 
-export async function incrementCreationViews(id: number, sessionId?: string): Promise<void> {
-  // Use a simple session identifier (IP-based or user-provided)
-  const session = sessionId || 'anonymous';
+export async function incrementCreationViews(id: string, sessionId?: string): Promise<void> {
+  const supabase = db();
+  const session = sessionId || "anonymous";
 
-  console.log(`[View Tracking] Creation: ${id}, Session: ${session}`);
+  // Check if this session viewed in the last hour
+  const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
+  const { data: recentView } = await supabase
+    .from("store_views")
+    .select("id")
+    .eq("creation_id", id)
+    .eq("session_id", session)
+    .gt("viewed_at", oneHourAgo)
+    .limit(1);
 
-  // Use raw SQL to reliably check if this session viewed this creation in the last hour
-  const oneHourAgo = Math.floor(Date.now() / 1000) - 3600; // Unix timestamp, 1 hour ago
+  if (!recentView || recentView.length === 0) {
+    // Increment view count
+    const { data: current } = await supabase
+      .from("store_creations")
+      .select("views")
+      .eq("id", id)
+      .single();
 
-  const checkResult = await db.run(sql`
-    SELECT id, viewed_at
-    FROM creation_views
-    WHERE creation_id = ${id}
-      AND session_id = ${session}
-      AND viewed_at > ${oneHourAgo}
-    LIMIT 1
-  `);
-
-  const hasRecentView = checkResult.rows.length > 0;
-
-  console.log(`[View Tracking] Recent view exists: ${hasRecentView}`);
-
-  if (!hasRecentView) {
-    console.log(`[View Tracking] ✅ Counting new view`);
-
-    // Increment the view count
-    await db.run(sql`
-      UPDATE creations
-      SET views = COALESCE(views, 0) + 1
-      WHERE id = ${id}
-    `);
-
-    // Record this view
-    const now = Math.floor(Date.now() / 1000);
-    await db.run(sql`
-      INSERT INTO creation_views (creation_id, session_id, viewed_at)
-      VALUES (${id}, ${session}, ${now})
-    `);
-
-    console.log(`[View Tracking] ✅ View recorded`);
-  } else {
-    console.log(`[View Tracking] ⏭️ Skipped (rate limited)`);
-  }
-
-  // Clean up old views (older than 7 days) - run this without blocking
-  setImmediate(async () => {
-    try {
-      const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);
-      await db.run(sql`
-        DELETE FROM creation_views
-        WHERE viewed_at < ${sevenDaysAgo}
-      `);
-      console.log(`[View Tracking] 🧹 Cleaned old views`);
-    } catch (error) {
-      // Silently fail - cleanup isn't critical
+    if (current) {
+      await supabase
+        .from("store_creations")
+        .update({ views: (current.views || 0) + 1 })
+        .eq("id", id);
     }
-  });
+
+    // Record the view
+    await supabase.from("store_views").insert({
+      creation_id: id,
+      session_id: session,
+      viewed_at: new Date().toISOString(),
+    });
+  }
 }
 
-// User-specific functions
 export async function getUserCreations(userId: string): Promise<(Creation & { category: Category | null })[]> {
-  const results = await db
-    .select()
-    .from(creations)
-    .leftJoin(categories, eq(creations.categoryId, categories.id))
-    .where(eq(creations.userId, userId));
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_creations")
+    .select("*, store_categories(*)")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
 
-  return results.map(row => ({
-    ...row.creations,
-    category: row.categories,
+  return (data || []).map((row: any) => ({
+    ...mapCreation(row),
+    category: row.store_categories ? mapCategory(row.store_categories) : null,
   }));
 }
 
 export async function getUserDrafts(userId: string): Promise<(Creation & { category: Category | null })[]> {
-  const results = await db
-    .select()
-    .from(creations)
-    .leftJoin(categories, eq(creations.categoryId, categories.id))
-    .where(and(eq(creations.userId, userId), eq(creations.status, "draft")));
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_creations")
+    .select("*, store_categories(*)")
+    .eq("user_id", userId)
+    .eq("status", "draft")
+    .order("created_at", { ascending: false });
 
-  return results.map(row => ({
-    ...row.creations,
-    category: row.categories,
+  return (data || []).map((row: any) => ({
+    ...mapCreation(row),
+    category: row.store_categories ? mapCategory(row.store_categories) : null,
   }));
 }
 
 export async function getPublishedCreations(): Promise<(Creation & { category: Category | null; user: User | null; averageRating: { average: number; count: number } | null })[]> {
-  const results = await db
-    .select()
-    .from(creations)
-    .leftJoin(categories, eq(creations.categoryId, categories.id))
-    .leftJoin(users, eq(creations.userId, users.id))
-    .where(and(eq(creations.status, "published"), ne(users.isSuspended, true)));
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_creations")
+    .select("*, store_categories(*), users(id, username, avatar_url, created_at)")
+    .eq("status", "published")
+    .order("created_at", { ascending: false });
 
-  // Get all ratings in one query
-  const allRatings = await db
-    .select({
-      creationId: creationReviews.creationId,
-      average: sql<number>`CAST(AVG(${creationReviews.rating}) AS REAL)`,
-      count: sql<number>`COUNT(*)`,
-    })
-    .from(creationReviews)
-    .groupBy(creationReviews.creationId);
+  // Get all ratings
+  const { data: allReviews } = await supabase
+    .from("store_reviews")
+    .select("creation_id, rating");
 
-  const ratingsMap = new Map(
-    allRatings.map(r => [
-      r.creationId,
-      { average: Math.round(r.average * 10) / 10, count: r.count }
-    ])
-  );
+  const ratingsMap = new Map<string, { average: number; count: number }>();
+  if (allReviews) {
+    for (const rv of allReviews) {
+      const existing = ratingsMap.get(rv.creation_id);
+      if (existing) {
+        existing.average = Math.round(((existing.average * existing.count + rv.rating) / (existing.count + 1)) * 10) / 10;
+        existing.count += 1;
+      } else {
+        ratingsMap.set(rv.creation_id, { average: rv.rating, count: 1 });
+      }
+    }
+  }
 
-  return results.map(row => ({
-    ...row.creations,
-    category: row.categories,
-    user: row.users,
-    averageRating: ratingsMap.get(row.creations.id) || null,
+  return (data || []).map((row: any) => ({
+    ...mapCreation(row),
+    category: row.store_categories ? mapCategory(row.store_categories) : null,
+    user: mapUser(row.users),
+    averageRating: ratingsMap.get(row.id) || null,
   }));
 }
 
+// ============================================================
+// User queries
+// ============================================================
+
 export async function getUserById(userId: string): Promise<User | null> {
-  const results = await db.query.users.findFirst({
-    where: eq(users.id, userId),
-  });
-  return results || null;
+  const supabase = db();
+  const { data } = await supabase
+    .from("users")
+    .select("id, username, avatar_url, created_at")
+    .eq("id", userId)
+    .single();
+
+  return data ? mapUser(data) : null;
 }
 
 export async function getAllUsers(): Promise<(User & { creationCount: number })[]> {
-  const allUsers = await db.select().from(users);
+  const supabase = db();
+  const { data: allUsers } = await supabase
+    .from("users")
+    .select("id, username, avatar_url, created_at")
+    .order("created_at", { ascending: false });
 
-  const usersWithCounts = await Promise.all(
-    allUsers.map(async (user) => {
-      const userCreations = await db
-        .select()
-        .from(creations)
-        .where(eq(creations.userId, user.id));
+  if (!allUsers) return [];
 
-      return {
-        ...user,
-        creationCount: userCreations.length,
-      };
-    })
-  );
+  const { data: allCreations } = await supabase
+    .from("store_creations")
+    .select("user_id");
 
-  return usersWithCounts;
+  const countMap = new Map<string, number>();
+  if (allCreations) {
+    for (const c of allCreations) {
+      if (c.user_id) {
+        countMap.set(c.user_id, (countMap.get(c.user_id) || 0) + 1);
+      }
+    }
+  }
+
+  return allUsers.map((user: any) => ({
+    ...mapUser(user)!,
+    creationCount: countMap.get(user.id) || 0,
+  }));
 }
 
 export async function getUserProfile(userId: string) {
   const user = await getUserById(userId);
-  if (!user || user.isSuspended) return null;
+  if (!user) return null;
 
-  const publishedCreations = await db
-    .select()
-    .from(creations)
-    .where(and(eq(creations.userId, userId), eq(creations.status, "published")));
+  const supabase = db();
+  const { data: publishedCreations } = await supabase
+    .from("store_creations")
+    .select("*, store_categories(*)")
+    .eq("user_id", userId)
+    .eq("status", "published")
+    .order("created_at", { ascending: false });
 
   return {
     ...user,
-    creationCount: publishedCreations.length,
-    creations: publishedCreations,
+    creationCount: publishedCreations?.length || 0,
+    creations: (publishedCreations || []).map((row: any) => ({
+      ...mapCreation(row),
+      category: row.store_categories ? mapCategory(row.store_categories) : null,
+    })),
   };
 }
 
-// Screenshot management functions
-export async function getCreationScreenshots(creationId: number): Promise<CreationScreenshot[]> {
-  return await db
-    .select()
-    .from(creationScreenshots)
-    .where(eq(creationScreenshots.creationId, creationId))
-    .orderBy(creationScreenshots.createdAt);
+// ============================================================
+// Screenshot queries
+// ============================================================
+
+export async function getCreationScreenshots(creationId: string): Promise<CreationScreenshot[]> {
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_screenshots")
+    .select("*")
+    .eq("creation_id", creationId)
+    .order("created_at", { ascending: true });
+
+  return (data || []).map(mapScreenshot);
 }
 
-export async function getMainScreenshot(creationId: number): Promise<CreationScreenshot | null> {
-  const results = await db
-    .select()
-    .from(creationScreenshots)
-    .where(and(eq(creationScreenshots.creationId, creationId), eq(creationScreenshots.isMain, true)))
+export async function getMainScreenshot(creationId: string): Promise<CreationScreenshot | null> {
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_screenshots")
+    .select("*")
+    .eq("creation_id", creationId)
+    .eq("is_main", true)
     .limit(1);
 
-  return results[0] || null;
+  return data?.[0] ? mapScreenshot(data[0]) : null;
 }
 
-export async function addScreenshot(creationId: number, url: string, isMain: boolean = false): Promise<CreationScreenshot> {
-  const result = await db
-    .insert(creationScreenshots)
-    .values({
-      creationId,
+export async function addScreenshot(creationId: string, url: string, isMain: boolean = false): Promise<CreationScreenshot | null> {
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_screenshots")
+    .insert({
+      creation_id: creationId,
       url,
-      isMain,
+      is_main: isMain,
     })
-    .returning();
+    .select()
+    .single();
 
-  return result[0];
+  return data ? mapScreenshot(data) : null;
 }
 
-export async function setMainScreenshot(screenshotId: number, creationId: number): Promise<void> {
-  // First, unset all main screenshots for this creation
-  await db
-    .update(creationScreenshots)
-    .set({ isMain: false })
-    .where(eq(creationScreenshots.creationId, creationId));
+export async function deleteScreenshot(screenshotId: string): Promise<void> {
+  const supabase = db();
+  await supabase.from("store_screenshots").delete().eq("id", screenshotId);
+}
 
-  // Then set the new main screenshot
-  await db
-    .update(creationScreenshots)
-    .set({ isMain: true })
-    .where(eq(creationScreenshots.id, screenshotId));
+export async function setMainScreenshotDb(screenshotId: string, creationId: string): Promise<void> {
+  const supabase = db();
 
-  // Also update the creation's screenshotUrl
-  const screenshot = await db
-    .select()
-    .from(creationScreenshots)
-    .where(eq(creationScreenshots.id, screenshotId))
-    .limit(1);
+  // Unset all main screenshots for this creation
+  await supabase
+    .from("store_screenshots")
+    .update({ is_main: false })
+    .eq("creation_id", creationId);
 
-  if (screenshot[0]) {
-    await db
-      .update(creations)
-      .set({ screenshotUrl: screenshot[0].url })
-      .where(eq(creations.id, creationId));
+  // Set the new main
+  await supabase
+    .from("store_screenshots")
+    .update({ is_main: true })
+    .eq("id", screenshotId);
+
+  // Update creation's screenshot_url
+  const { data: screenshot } = await supabase
+    .from("store_screenshots")
+    .select("url")
+    .eq("id", screenshotId)
+    .single();
+
+  if (screenshot) {
+    await supabase
+      .from("store_creations")
+      .update({ screenshot_url: screenshot.url })
+      .eq("id", creationId);
   }
 }
 
-export async function deleteScreenshot(screenshotId: number): Promise<void> {
-  await db
-    .delete(creationScreenshots)
-    .where(eq(creationScreenshots.id, screenshotId));
-}
+// Alias for backward compatibility with API routes
+export const setMainScreenshot = setMainScreenshotDb;
 
-// Review functions
-export type CreationReviewWithUser = CreationReview & { user: User };
+// ============================================================
+// Review queries
+// ============================================================
 
-export async function getCreationReviews(
-  creationId: number
-): Promise<CreationReviewWithUser[]> {
-  const results = await db
-    .select()
-    .from(creationReviews)
-    .leftJoin(users, eq(creationReviews.userId, users.id))
-    .where(eq(creationReviews.creationId, creationId))
-    .orderBy(desc(creationReviews.createdAt));
+export async function getCreationReviews(creationId: string): Promise<CreationReviewWithUser[]> {
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_reviews")
+    .select("*, users(id, username, avatar_url, created_at)")
+    .eq("creation_id", creationId)
+    .order("created_at", { ascending: false });
 
-  return results.map(row => ({
-    ...row.creation_reviews,
-    user: row.users!,
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    creationId: row.creation_id,
+    userId: row.user_id,
+    rating: row.rating,
+    comment: row.comment,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    user: mapUser(row.users)!,
   }));
 }
 
-export async function getCreationAverageRating(creationId: number): Promise<{
-  average: number;
-  count: number;
-} | null> {
-  const result = await db
-    .select({
-      average: sql<number>`COALESCE(AVG(${creationReviews.rating}), 0)`,
-      count: sql<number>`COUNT(*)`,
-    })
-    .from(creationReviews)
-    .where(eq(creationReviews.creationId, creationId));
+export async function getCreationAverageRating(creationId: string): Promise<{ average: number; count: number } | null> {
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_reviews")
+    .select("rating")
+    .eq("creation_id", creationId);
 
-  if (result.length === 0 || result[0].count === 0) {
-    return null;
-  }
+  if (!data || data.length === 0) return null;
 
+  const sum = data.reduce((acc, r) => acc + r.rating, 0);
   return {
-    average: Math.round(result[0].average * 10) / 10, // Round to 1 decimal
-    count: result[0].count,
+    average: Math.round((sum / data.length) * 10) / 10,
+    count: data.length,
   };
 }
 
-export async function getUserReviewForCreation(
-  creationId: number,
-  userId: string
-): Promise<CreationReview | null> {
-  const result = await db
-    .select()
-    .from(creationReviews)
-    .where(
-      and(
-        eq(creationReviews.creationId, creationId),
-        eq(creationReviews.userId, userId)
-      )
-    )
+export async function getUserReviewForCreation(creationId: string, userId: string): Promise<CreationReview | null> {
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_reviews")
+    .select("*")
+    .eq("creation_id", creationId)
+    .eq("user_id", userId)
     .limit(1);
 
-  return result[0] || null;
+  if (!data?.[0]) return null;
+  return {
+    id: data[0].id,
+    creationId: data[0].creation_id,
+    userId: data[0].user_id,
+    rating: data[0].rating,
+    comment: data[0].comment,
+    createdAt: data[0].created_at,
+    updatedAt: data[0].updated_at,
+  };
 }
 
-export async function createReview(
-  creationId: number,
-  userId: string,
-  rating: number,
-  comment?: string
-): Promise<CreationReview> {
-  const result = await db
-    .insert(creationReviews)
-    .values({
-      creationId,
-      userId,
+export async function createReview(creationId: string, userId: string, rating: number, comment?: string): Promise<CreationReview | null> {
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_reviews")
+    .insert({
+      creation_id: creationId,
+      user_id: userId,
       rating,
       comment: comment || null,
     })
-    .returning();
+    .select()
+    .single();
 
-  return result[0];
+  if (!data) return null;
+  return {
+    id: data.id,
+    creationId: data.creation_id,
+    userId: data.user_id,
+    rating: data.rating,
+    comment: data.comment,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
 }
 
-export async function updateReview(
-  reviewId: number,
-  rating: number,
-  comment?: string
-): Promise<CreationReview> {
-  const result = await db
-    .update(creationReviews)
-    .set({
+export async function updateReview(reviewId: string, rating: number, comment?: string): Promise<CreationReview | null> {
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_reviews")
+    .update({
       rating,
       comment: comment || null,
-      updatedAt: sql`(unixepoch())`,
+      updated_at: new Date().toISOString(),
     })
-    .where(eq(creationReviews.id, reviewId))
-    .returning();
+    .eq("id", reviewId)
+    .select()
+    .single();
 
-  return result[0];
+  if (!data) return null;
+  return {
+    id: data.id,
+    creationId: data.creation_id,
+    userId: data.user_id,
+    rating: data.rating,
+    comment: data.comment,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
 }
 
-export async function deleteReview(reviewId: number): Promise<void> {
-  await db.delete(creationReviews).where(eq(creationReviews.id, reviewId));
+export async function deleteReview(reviewId: string): Promise<void> {
+  const supabase = db();
+  await supabase.from("store_reviews").delete().eq("id", reviewId);
 }
 
-// Legacy function aliases for backward compatibility
+// ============================================================
+// Legacy aliases for backward compatibility
+// ============================================================
 export const getAllBookmarks = getAllCreations;
 export const getBookmarkById = getCreationById;
 export const getBookmarkBySlug = getCreationBySlug;
-export const incrementBookmarkViews = incrementCreationViews;
-export const getUserBookmarks = getUserCreations;
 export const getPublishedBookmarks = getPublishedCreations;

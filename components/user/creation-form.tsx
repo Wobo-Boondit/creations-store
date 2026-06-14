@@ -27,7 +27,7 @@ interface Screenshot {
 }
 
 interface Creation {
-  id: number;
+  id: string;
   title: string;
   slug: string;
   url: string;

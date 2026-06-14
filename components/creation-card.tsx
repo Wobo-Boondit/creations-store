@@ -18,7 +18,7 @@ import { StarRating } from "@/components/star-rating";
 
 interface CreationCardProps {
   creation: {
-    id: number;
+    id: string;
     url: string;
     title: string;
     description?: string | null;
@@ -30,7 +30,7 @@ interface CreationCardProps {
     };
     user?: {
       id: string;
-      name: string;
+      username: string;
     } | null;
     iconUrl?: string | null;
     favicon?: string | null;
@@ -179,7 +179,7 @@ export const CreationCard = ({ creation }: CreationCardProps) => {
                 {creation.author && creation.user ? " • " : null}
                 {creation.user && (
                   <span className="hover:text-foreground transition-colors">
-                    added by {creation.user.name}
+                    added by {creation.user.username}
                   </span>
                 )}
               </span>

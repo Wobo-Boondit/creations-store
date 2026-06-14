@@ -23,10 +23,10 @@ export default async function UserProfilePage({ params }: Props) {
             {/* Profile Header */}
             <div className="rounded-xl border bg-card p-6 sm:p-8">
               <div className="flex items-start gap-6">
-                {profile.avatar ? (
+                {profile.avatarUrl ? (
                   <img
-                    src={profile.avatar}
-                    alt={profile.name}
+                    src={profile.avatarUrl}
+                    alt={profile.username}
                     className="h-20 w-20 rounded-full object-cover border-2"
                   />
                 ) : (
@@ -37,18 +37,14 @@ export default async function UserProfilePage({ params }: Props) {
                 <div className="flex-1 space-y-3">
                   <div>
                     <h1 className="text-3xl font-bold">
-                      {profile.name}
+                      {profile.username}
                     </h1>
                     {profile.username && (
                       <p className="text-sm text-muted-foreground mt-1">
                         @{profile.username}
                       </p>
                     )}
-                    {profile.bio && (
-                      <p className="text-muted-foreground mt-2">
-                        {profile.bio}
-                      </p>
-                    )}
+
                   </div>
                   <div className="flex items-center gap-6 text-sm text-muted-foreground">
                     <div className="flex items-center gap-2">

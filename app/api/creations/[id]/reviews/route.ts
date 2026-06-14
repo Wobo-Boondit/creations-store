@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import {
   getCreationReviews,
   createReview,
@@ -8,9 +7,6 @@ import {
   updateReview,
   deleteReview,
 } from "@/lib/data";
-import { db } from "@/db/client";
-import { creations, creationReviews } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
 
 export async function GET(
   request: Request,
@@ -18,25 +14,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const creationId = parseInt(id, 10);
-
-    if (isNaN(creationId)) {
-      return NextResponse.json({ error: "Invalid creation ID" }, { status: 400 });
-    }
-
-    // Verify creation exists
-    const creation = await db
-      .select()
-      .from(creations)
-      .where(eq(creations.id, creationId))
-      .limit(1);
-
-    if (creation.length === 0) {
-      return NextResponse.json({ error: "Creation not found" }, { status: 404 });
-    }
-
-    const reviews = await getCreationReviews(creationId);
-
+    const reviews = await getCreationReviews(id);
     return NextResponse.json(reviews);
   } catch (error) {
     console.error("Error fetching reviews:", error);
@@ -52,30 +30,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const user = await getCurrentUser();
 
-    if (!session?.user?.id) {
+    if (!user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await params;
-    const creationId = parseInt(id, 10);
-
-    if (isNaN(creationId)) {
-      return NextResponse.json({ error: "Invalid creation ID" }, { status: 400 });
-    }
-
-    // Verify creation exists
-    const creation = await db
-      .select()
-      .from(creations)
-      .where(eq(creations.id, creationId))
-      .limit(1);
-
-    if (creation.length === 0) {
-      return NextResponse.json({ error: "Creation not found" }, { status: 404 });
-    }
-
     const body = await request.json();
     const { rating, comment } = body;
 
@@ -93,10 +54,7 @@ export async function POST(
     }
 
     // Check if user already has a review
-    const existingReview = await getUserReviewForCreation(
-      creationId,
-      session.user.id
-    );
+    const existingReview = await getUserReviewForCreation(id, user.id);
 
     let review;
 
@@ -105,7 +63,7 @@ export async function POST(
       review = await updateReview(existingReview.id, rating, comment);
     } else {
       // Create new review
-      review = await createReview(creationId, session.user.id, rating, comment);
+      review = await createReview(id, user.id, rating, comment);
     }
 
     return NextResponse.json(review, { status: 201 });
@@ -123,36 +81,22 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const session = await getServerSession(authOptions);
+    const user = await getCurrentUser();
 
-    if (!session?.user?.id) {
+    if (!user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await params;
-    const creationId = parseInt(id, 10);
 
-    if (isNaN(creationId)) {
-      return NextResponse.json({ error: "Invalid creation ID" }, { status: 400 });
-    }
+    // Find the user's review for this creation
+    const review = await getUserReviewForCreation(id, user.id);
 
-    // Find and delete user's review for this creation
-    const review = await db
-      .select()
-      .from(creationReviews)
-      .where(
-        and(
-          eq(creationReviews.creationId, creationId),
-          eq(creationReviews.userId, session.user.id)
-        )
-      )
-      .limit(1);
-
-    if (review.length === 0) {
+    if (!review) {
       return NextResponse.json({ error: "Review not found" }, { status: 404 });
     }
 
-    await deleteReview(review[0].id);
+    await deleteReview(review.id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

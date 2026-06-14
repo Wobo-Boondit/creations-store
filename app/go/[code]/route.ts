@@ -1,8 +1,6 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { db } from "@/db/client";
-import { creations, creationClicks } from "@/db/schema";
-import { eq, and, gte, sql } from "drizzle-orm";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { NextRequest } from "next/server";
 
 export const runtime = "nodejs";
@@ -18,7 +16,7 @@ function anonymizeIp(ip: string): string {
     parts[3] = "0";
     return parts.join(".");
   }
-  // For IPv6 or other formats, return a hash
+  // For IPv6 or other formats, return a partial value
   return ip.split(":").slice(0, 3).join(":") + ":xxxx";
 }
 
@@ -40,37 +38,19 @@ function getSessionId(ip: string, userAgent: string): string {
   return `${anonymizeIp(ip)}_${device}`;
 }
 
-// Rate limiting: check if this session clicked this creation in the last hour
-async function shouldCountClick(creationId: number, sessionId: string): Promise<boolean> {
-  const oneHourAgo = new Date((Date.now() / 1000 - 3600) * 1000);
-
-  const result = await db
-    .select()
-    .from(creationClicks)
-    .where(
-      and(
-        eq(creationClicks.creationId, creationId),
-        eq(creationClicks.sessionId, sessionId),
-        gte(creationClicks.clickedAt, oneHourAgo)
-      )
-    )
-    .limit(1);
-
-  return result.length === 0;
-}
-
 export async function GET(request: NextRequest, context: RouteContext) {
   const { code } = await context.params;
   const headersList = await headers();
+  const supabase = createAdminClient();
 
   // Find creation by proxy code
-  const result = await db
-    .select()
-    .from(creations)
-    .where(eq(creations.proxyCode, code))
+  const { data: result, error } = await supabase
+    .from("store_creations")
+    .select("*")
+    .eq("proxy_code", code)
     .limit(1);
 
-  if (result.length === 0) {
+  if (!result || result.length === 0 || error) {
     // Creation not found - redirect to home with error
     return redirect("/?error=invalid-link");
   }
@@ -78,9 +58,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const creation = result[0];
 
   // Check if creation is flagged
-  if (creation.isFlagged) {
+  if (creation.is_flagged) {
     // Redirect to warning page
-    return redirect(`/go/${code}/warning?reason=${encodeURIComponent(creation.flagReason || "This creation has been flagged")}`);
+    return redirect(`/go/${code}/warning?reason=${encodeURIComponent(creation.flag_reason || "This creation has been flagged")}`);
   }
 
   // Extract tracking information
@@ -102,17 +82,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
   // Generate session ID
   const sessionId = getSessionId(normalizedIp, userAgent);
 
-  // Check if we should count this click (rate limiting)
-  const shouldCount = await shouldCountClick(creation.id, sessionId);
-
-  // Always record the click for analytics (even if rate limited)
-  const now = Math.floor(Date.now() / 1000);
-  await db.insert(creationClicks).values({
-    creationId: creation.id,
-    sessionId,
-    userAgent,
+  // Always record the click for analytics
+  await supabase.from("store_clicks").insert({
+    creation_id: creation.id,
+    session_id: sessionId,
+    user_agent: userAgent,
     referrer,
-    clickedAt: new Date(now * 1000),
+    clicked_at: new Date().toISOString(),
   });
 
   // Redirect to the actual creation URL

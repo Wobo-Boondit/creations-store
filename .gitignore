@@ -40,3 +40,7 @@ yarn-error.log*
 next-env.d.ts
 local.db
 *.db
+
+# Migration artifacts
+creation_map.json
+id_mapping.json

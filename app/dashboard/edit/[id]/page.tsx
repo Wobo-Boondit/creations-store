@@ -1,5 +1,4 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { redirect, notFound } from "next/navigation";
 import { getAllCategories, getCreationById } from "@/lib/data";
 import { CreationForm } from "@/components/user/creation-form";
@@ -12,20 +11,20 @@ type Props = {
 };
 
 export default async function EditCreationPage({ params }: Props) {
-  const session = await getServerSession(authOptions);
+  const user = await getCurrentUser();
 
-  if (!session?.user?.id) {
-    redirect("/auth/login");
+  if (!user?.id) {
+    redirect("/auth/signin");
   }
 
-  const creation = await getCreationById(Number(params.id));
+  const creation = await getCreationById(params.id as string);
 
   if (!creation) {
     notFound();
   }
 
   // Check ownership
-  if (creation.userId !== session.user.id) {
+  if (creation.userId !== user.id) {
     redirect("/dashboard");
   }
 
@@ -55,10 +54,10 @@ export default async function EditCreationPage({ params }: Props) {
 
             <CreationForm
               categories={categories}
-              userId={session.user.id}
+              userId={user.id}
               mode="edit"
               creation={creation}
-              username={session.user.name}
+              username={user.name}
             />
           </div>
         </div>

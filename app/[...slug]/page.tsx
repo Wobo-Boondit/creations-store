@@ -4,8 +4,10 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import Balancer from "react-wrap-balancer";
 
+export const dynamic = "force-dynamic";
+
 // Database Imports
-import { getCreationById, incrementCreationViews, getCreationReviews } from "@/lib/data";
+import { getCreationBySlug, incrementCreationViews, getCreationReviews } from "@/lib/data";
 
 // Component Imports
 import { Section, Container } from "@/components/craft";
@@ -19,8 +21,7 @@ import { StarRating } from "@/components/star-rating";
 // Metadata
 import { Metadata, ResolvingMetadata } from "next";
 import Markdown from "react-markdown";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 
 type Props = {
   params: { slug: string[] };
@@ -30,20 +31,15 @@ export async function generateMetadata(
   { params }: Props,
   parent: ResolvingMetadata,
 ): Promise<Metadata> {
-  // Parse id from the URL (format: id-slug)
-  const slugParam = params.slug.join('/');
-  const id = parseInt(slugParam.split('-')[0]);
+  // Look up by slug from the URL path
+  const slug = params.slug.join('/');
 
-  if (isNaN(id)) {
+  const bookmark = await getCreationBySlug(slug);
+
+  if (!bookmark) {
     return {
       title: "Not Found",
     };
-  }
-
-  const bookmark = await getCreationById(id);
-
-  if (!bookmark) {
-    notFound();
   }
 
   const previousImages = (await parent).openGraph?.images || [];
@@ -73,25 +69,20 @@ export async function generateMetadata(
 }
 
 export default async function Page({ params }: Props) {
-  // Parse id from the URL (format: id-slug)
-  const slugParam = params.slug.join('/');
-  const id = parseInt(slugParam.split('-')[0]);
+  // Look up by slug from the URL path
+  const slug = params.slug.join('/');
 
-  if (isNaN(id)) {
-    notFound();
-  }
-
-  const bookmark = await getCreationById(id);
+  const bookmark = await getCreationBySlug(slug);
 
   if (!bookmark) {
     notFound();
   }
 
   // Fetch reviews
-  const reviews = await getCreationReviews(id);
+  const reviews = await getCreationReviews(bookmark.id);
 
-  // Get current session
-  const session = await getServerSession(authOptions);
+  // Get current user
+  const user = await getCurrentUser();
 
   // Get headers for IP tracking and URL generation
   const headersList = await headers();
@@ -113,7 +104,7 @@ export default async function Page({ params }: Props) {
     viewSessionId = `anon_${normalizedIp}`;
 
     // Log for debugging
-    console.log(`[View Tracking] Session ID: ${viewSessionId}, Creation ID: ${id}`);
+    console.log(`[View Tracking] Session ID: ${viewSessionId}, Creation ID: ${bookmark.id}`);
   }
 
   // Increment views in the background with rate limiting
@@ -122,7 +113,7 @@ export default async function Page({ params }: Props) {
   // Get the full URL for sharing
   const host = headersList.get('host') || '';
   const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
-  const pageUrl = `${protocol}://${host}/${slugParam}`;
+  const pageUrl = `${protocol}://${host}/${slug}`;
 
   return (
     <Section>
@@ -179,7 +170,7 @@ export default async function Page({ params }: Props) {
                         href={`/u/${bookmark.user.id}`}
                         className="text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        {bookmark.user.name}
+                        {bookmark.user.username}
                       </Link>
                     </div>
                   )}
@@ -196,7 +187,7 @@ export default async function Page({ params }: Props) {
                   pageUrl={pageUrl}
                   proxyCode={bookmark.proxyCode}
                   creationId={bookmark.id}
-                  isOwner={session?.user?.id === bookmark.userId}
+                  isOwner={user?.id === bookmark.userId}
                 />
               </div>
             </div>
@@ -338,7 +329,7 @@ export default async function Page({ params }: Props) {
             <div className="border-t pt-8">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold">More from {bookmark.user.name}</h3>
+                  <h3 className="text-lg font-semibold">More from {bookmark.user.username}</h3>
                   <Link
                     href={`/u/${bookmark.user.id}`}
                     className="text-sm text-muted-foreground hover:text-foreground"
@@ -356,10 +347,10 @@ export default async function Page({ params }: Props) {
               creationId={bookmark.id}
               initialReviews={reviews}
               initialAverageRating={bookmark.averageRating}
-              currentUser={session?.user ? {
-                id: session.user.id,
-                name: session.user.name || "User",
-                avatar: (session.user as any).image || null,
+              currentUser={user ? {
+                id: user.id,
+                username: user.username || user.name || "User",
+                avatarUrl: user.avatar || null,
               } : null}
             />
           </div>

@@ -1,6 +1,4 @@
-import { db } from "@/db/client";
-import { creationClicks, creationInstalls, creationDailyStats, creations } from "@/db/schema";
-import { eq, gte, lte, and, sql, desc } from "drizzle-orm";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface CreationAnalytics {
   totalClicks: number;
@@ -35,68 +33,85 @@ export interface DeviceStats {
   percentage: number;
 }
 
+function db() {
+  return createAdminClient();
+}
+
 /**
  * Get comprehensive analytics for a creation
  */
-export async function getCreationAnalytics(creationId: number): Promise<CreationAnalytics> {
-  const now = Math.floor(Date.now() / 1000);
-  const sevenDaysAgo = now - 7 * 24 * 60 * 60;
-  const thirtyDaysAgo = now - 30 * 24 * 60 * 60;
+export async function getCreationAnalytics(creationId: string): Promise<CreationAnalytics> {
+  const supabase = db();
+  const id = creationId;
 
-  // Get total clicks
-  const totalClicksResult = await db
-    .select({ count: sql<number>`COUNT(*)` })
-    .from(creationClicks)
-    .where(eq(creationClicks.creationId, creationId));
-  const totalClicks = totalClicksResult[0]?.count || 0;
+  const empty: CreationAnalytics = {
+    totalClicks: 0,
+    uniqueClicks: 0,
+    totalInstalls: 0,
+    installRate: 0,
+    avgDailyClicks: 0,
+    avgDailyInstalls: 0,
+    retention7Day: 0,
+    retention30Day: 0,
+    activeUsers7Day: 0,
+    activeUsers30Day: 0,
+  };
+  if (id == null) return empty;
 
-  // Get unique clicks (unique session IDs)
-  const uniqueClicksResult = await db
-    .select({ count: sql<number>`COUNT(DISTINCT session_id)` })
-    .from(creationClicks)
-    .where(eq(creationClicks.creationId, creationId));
-  const uniqueClicks = uniqueClicksResult[0]?.count || 0;
+  const now = Date.now();
+  const sevenDaysAgoMs = now - 7 * 24 * 60 * 60 * 1000;
+  const thirtyDaysAgoMs = now - 30 * 24 * 60 * 60 * 1000;
 
-  // Get total installs
-  const totalInstallsResult = await db
-    .select({ count: sql<number>`COUNT(*)` })
-    .from(creationInstalls)
-    .where(eq(creationInstalls.creationId, creationId));
-  const totalInstalls = totalInstallsResult[0]?.count || 0;
+  // Fetch all clicks for the creation
+  const { data: clicks } = await supabase
+    .from("store_clicks")
+    .select("session_id, user_agent, clicked_at")
+    .eq("creation_id", id);
 
-  // Calculate install rate
-  const installRate = totalClicks > 0 ? (totalInstalls / totalClicks) * 100 : 0;
+  const clickRows = clicks || [];
+  const totalClicks = clickRows.length;
+  const uniqueSessions = new Set(clickRows.map((c: any) => c.session_id));
+  const uniqueClicks = uniqueSessions.size;
 
-  // Get daily stats for averages
-  const dailyStats = await db
-    .select()
-    .from(creationDailyStats)
-    .where(eq(creationDailyStats.creationId, creationId))
-    .orderBy(desc(creationDailyStats.date))
+  // Fetch installs
+  const { count: totalInstalls } = await supabase
+    .from("store_installs")
+    .select("*", { count: "exact", head: true })
+    .eq("creation_id", id);
+
+  const installs = totalInstalls || 0;
+  const installRate = totalClicks > 0 ? (installs / totalClicks) * 100 : 0;
+
+  // Daily stats for averages
+  const { data: dailyStatsRows } = await supabase
+    .from("store_daily_stats")
+    .select("*")
+    .eq("creation_id", id)
+    .order("date", { ascending: false })
     .limit(30);
 
+  const daily = dailyStatsRows || [];
   const avgDailyClicks =
-    dailyStats.length > 0
-      ? dailyStats.reduce((sum, s) => sum + s.clicks, 0) / dailyStats.length
+    daily.length > 0
+      ? daily.reduce((sum: number, s: any) => sum + (s.clicks || 0), 0) / daily.length
       : 0;
-
   const avgDailyInstalls =
-    dailyStats.length > 0
-      ? dailyStats.reduce((sum, s) => sum + s.installs, 0) / dailyStats.length
+    daily.length > 0
+      ? daily.reduce((sum: number, s: any) => sum + (s.installs || 0), 0) / daily.length
       : 0;
 
-  // Calculate retention (users who returned after first click)
-  const retention7Day = await calculateRetentionRate(creationId, 7);
-  const retention30Day = await calculateRetentionRate(creationId, 30);
+  // Active users (unique sessions in window)
+  const activeUsers7Day = countUniqueSessionsSince(clickRows, sevenDaysAgoMs);
+  const activeUsers30Day = countUniqueSessionsSince(clickRows, thirtyDaysAgoMs);
 
-  // Calculate active users (users who clicked in the period)
-  const activeUsers7Day = await getActiveUsers(creationId, sevenDaysAgo);
-  const activeUsers30Day = await getActiveUsers(creationId, thirtyDaysAgo);
+  // Retention: sessions that first clicked before cutoff AND returned after cutoff
+  const retention7Day = calculateRetention(clickRows, sevenDaysAgoMs);
+  const retention30Day = calculateRetention(clickRows, thirtyDaysAgoMs);
 
   return {
     totalClicks,
     uniqueClicks,
-    totalInstalls,
+    totalInstalls: installs,
     installRate: Math.round(installRate * 10) / 10,
     avgDailyClicks: Math.round(avgDailyClicks * 10) / 10,
     avgDailyInstalls: Math.round(avgDailyInstalls * 10) / 10,
@@ -107,104 +122,148 @@ export async function getCreationAnalytics(creationId: number): Promise<Creation
   };
 }
 
+function countUniqueSessionsSince(clickRows: any[], sinceMs: number): number {
+  const sessions = new Set<string>();
+  for (const c of clickRows) {
+    if (parseTime(c.clicked_at) >= sinceMs) {
+      sessions.add(c.session_id);
+    }
+  }
+  return sessions.size;
+}
+
+function calculateRetention(clickRows: any[], cutoffMs: number): number {
+  const beforeSessions = new Set<string>();
+  const afterSessions = new Set<string>();
+  for (const c of clickRows) {
+    const t = parseTime(c.clicked_at);
+    if (t <= cutoffMs) beforeSessions.add(c.session_id);
+    else afterSessions.add(c.session_id);
+  }
+  if (beforeSessions.size === 0) return 0;
+  let returned = 0;
+  beforeSessions.forEach((s) => {
+    if (afterSessions.has(s)) returned++;
+  });
+  return (returned / beforeSessions.size) * 100;
+}
+
+function parseTime(v: any): number {
+  if (!v) return 0;
+  if (typeof v === "number") return v; // unix seconds or ms
+  const t = new Date(v).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
 /**
  * Get daily stats for a creation over a period
  */
 export async function getCreationDailyStats(
-  creationId: number,
+  creationId: string,
   days: number = 30
 ): Promise<DailyStats[]> {
-  const now = Math.floor(Date.now() / 1000);
-  const startDate = new Date((now - days * 24 * 60 * 60) * 1000);
-  const startDateStr = startDate.toISOString().split("T")[0];
+  const supabase = db();
+  const id = creationId;
+  if (!id) return [];
 
-  // Try to get from aggregated stats table
-  const aggregatedStats = await db
-    .select()
-    .from(creationDailyStats)
-    .where(
-      and(
-        eq(creationDailyStats.creationId, creationId),
-        gte(creationDailyStats.date, startDateStr)
-      )
-    )
-    .orderBy(desc(creationDailyStats.date));
+  const startDateStr = new Date(now() - days * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split("T")[0];
 
-  if (aggregatedStats.length > 0) {
-    return aggregatedStats.map((s) => ({
+  // Try aggregated stats table first
+  const { data: aggregated } = await supabase
+    .from("store_daily_stats")
+    .select("*")
+    .eq("creation_id", id)
+    .gte("date", startDateStr)
+    .order("date", { ascending: false });
+
+  if (aggregated && aggregated.length > 0) {
+    return aggregated.map((s: any) => ({
       date: s.date,
-      clicks: s.clicks,
-      uniqueClicks: s.uniqueClicks,
-      installs: s.installs,
-      activeUsers: s.activeUsers,
+      clicks: s.clicks || 0,
+      uniqueClicks: s.unique_clicks || 0,
+      installs: s.installs || 0,
+      activeUsers: s.active_users || 0,
     }));
   }
 
   // Fallback: calculate from raw clicks data
-  const clickStats = await db
-    .select({
-      date: sql<string>`DATE(clicked_at, 'unixepoch')`,
-      clicks: sql<number>`COUNT(*)`,
-      uniqueClicks: sql<number>`COUNT(DISTINCT session_id)`,
-    })
-    .from(creationClicks)
-    .where(
-      and(
-        eq(creationClicks.creationId, creationId),
-        gte(creationClicks.clickedAt, new Date(startDate.getTime() / 1000))
-      )
-    )
-    .groupBy(sql`DATE(clicked_at, 'unixepoch')`)
-    .orderBy(desc(sql`DATE(clicked_at, 'unixepoch')`));
+  const sinceMs = now() - days * 24 * 60 * 60 * 1000;
+  const { data: clickRows } = await supabase
+    .from("store_clicks")
+    .select("session_id, clicked_at")
+    .eq("creation_id", id)
+    .gte("clicked_at", new Date(sinceMs).toISOString());
 
-  return clickStats.map((s) => ({
-    date: s.date,
-    clicks: s.clicks,
-    uniqueClicks: s.uniqueClicks,
-    installs: 0, // Would need to query installs table separately
-    activeUsers: 0, // Would need additional calculation
-  }));
+  const byDate = new Map<string, { clicks: number; sessions: Set<string> }>();
+  for (const c of clickRows || []) {
+    const dateStr = new Date(parseTime(c.clicked_at)).toISOString().split("T")[0];
+    if (!byDate.has(dateStr)) byDate.set(dateStr, { clicks: 0, sessions: new Set() });
+    const entry = byDate.get(dateStr)!;
+    entry.clicks += 1;
+    entry.sessions.add(c.session_id);
+  }
+
+  return Array.from(byDate.entries())
+    .map(([date, entry]) => ({
+      date,
+      clicks: entry.clicks,
+      uniqueClicks: entry.sessions.size,
+      installs: 0,
+      activeUsers: 0,
+    }))
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
 }
 
 /**
  * Get top referrers for a creation
  */
-export async function getTopReferrers(creationId: number, limit: number = 10): Promise<ReferrerStats[]> {
-  const result = await db
-    .select({
-      referrer: creationClicks.referrer,
-      clicks: sql<number>`COUNT(*)`,
-    })
-    .from(creationClicks)
-    .where(eq(creationClicks.creationId, creationId))
-    .groupBy(creationClicks.referrer)
-    .orderBy(desc(sql`COUNT(*)`))
-    .limit(limit);
+export async function getTopReferrers(creationId: string, limit: number = 10): Promise<ReferrerStats[]> {
+  const supabase = db();
+  const id = creationId;
+  if (!id) return [];
 
-  const totalClicks = result.reduce((sum, r) => sum + r.clicks, 0);
+  const { data: clickRows } = await supabase
+    .from("store_clicks")
+    .select("referrer")
+    .eq("creation_id", id);
 
-  return result.map((r) => ({
-    referrer: r.referrer || "Direct",
-    clicks: r.clicks,
-    percentage: totalClicks > 0 ? (r.clicks / totalClicks) * 100 : 0,
-  }));
+  const counts: Record<string, number> = {};
+  const rows = clickRows || [];
+  const totalClicks = rows.length;
+  for (const c of rows as any[]) {
+    const key = c.referrer || "Direct";
+    counts[key] = (counts[key] || 0) + 1;
+  }
+
+  return Object.entries(counts)
+    .map(([referrer, clicks]) => ({
+      referrer,
+      clicks,
+      percentage: totalClicks > 0 ? (clicks / totalClicks) * 100 : 0,
+    }))
+    .sort((a, b) => b.clicks - a.clicks)
+    .slice(0, limit);
 }
 
 /**
  * Get device breakdown from user agents
  */
-export async function getDeviceBreakdown(creationId: number): Promise<DeviceStats[]> {
-  const clicks = await db
-    .select({
-      userAgent: creationClicks.userAgent,
-    })
-    .from(creationClicks)
-    .where(eq(creationClicks.creationId, creationId));
+export async function getDeviceBreakdown(creationId: string): Promise<DeviceStats[]> {
+  const supabase = db();
+  const id = creationId;
+  if (!id) return [];
+
+  const { data: clickRows } = await supabase
+    .from("store_clicks")
+    .select("user_agent")
+    .eq("creation_id", id);
 
   const deviceCounts: Record<string, number> = {};
-
-  for (const click of clicks) {
-    const device = detectDevice(click.userAgent || "");
+  const rows = clickRows || [];
+  for (const c of rows as any[]) {
+    const device = detectDevice(c.user_agent || "");
     deviceCounts[device] = (deviceCounts[device] || 0) + 1;
   }
 
@@ -217,69 +276,6 @@ export async function getDeviceBreakdown(creationId: number): Promise<DeviceStat
       percentage: totalClicks > 0 ? (count / totalClicks) * 100 : 0,
     }))
     .sort((a, b) => b.clicks - a.clicks);
-}
-
-/**
- * Calculate retention rate - percentage of users who returned
- */
-async function calculateRetentionRate(
-  creationId: number,
-  days: number
-): Promise<number> {
-  const cutoffTime = Math.floor(Date.now() / 1000) - days * 24 * 60 * 60;
-
-  // Get users who first clicked before cutoff
-  const firstClickers = await db
-    .select({ sessionId: creationClicks.sessionId })
-    .from(creationClicks)
-    .where(
-      and(
-        eq(creationClicks.creationId, creationId),
-        lte(creationClicks.clickedAt, new Date(cutoffTime * 1000))
-      )
-    )
-    .groupBy(creationClicks.sessionId);
-
-  if (firstClickers.length === 0) return 0;
-
-  // Count how many returned after cutoff
-  let returnedCount = 0;
-  for (const clicker of firstClickers) {
-    const hasReturned = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(creationClicks)
-      .where(
-        and(
-          eq(creationClicks.creationId, creationId),
-          eq(creationClicks.sessionId, clicker.sessionId),
-          gte(creationClicks.clickedAt, new Date(cutoffTime * 1000))
-        )
-      )
-      .limit(1);
-
-    if (hasReturned[0]?.count > 0) {
-      returnedCount++;
-    }
-  }
-
-  return (returnedCount / firstClickers.length) * 100;
-}
-
-/**
- * Get active users in a time period
- */
-async function getActiveUsers(creationId: number, since: number): Promise<number> {
-  const result = await db
-    .select({ count: sql<number>`COUNT(DISTINCT session_id)` })
-    .from(creationClicks)
-    .where(
-      and(
-        eq(creationClicks.creationId, creationId),
-        gte(creationClicks.clickedAt, new Date(since * 1000))
-      )
-    );
-
-  return result[0]?.count || 0;
 }
 
 /**
@@ -301,62 +297,76 @@ function detectDevice(userAgent: string): string {
  * Aggregate daily stats - should be run periodically (e.g., via cron)
  */
 export async function aggregateDailyStats(date: string): Promise<void> {
-  const startOfDay = Math.floor(new Date(date).getTime() / 1000);
-  const endOfDay = startOfDay + 24 * 60 * 60 - 1;
+  const supabase = db();
+  const dayStart = new Date(date);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
 
-  // Get all creations that had clicks today
-  const creationsWithClicks = await db
-    .select({ creationId: creationClicks.creationId })
-    .from(creationClicks)
-    .where(
-      and(
-        gte(creationClicks.clickedAt, new Date(startOfDay * 1000)),
-        lte(creationClicks.clickedAt, new Date(endOfDay * 1000))
-      )
-    )
-    .groupBy(creationClicks.creationId);
+  // Get all creations that had clicks on this date
+  const { data: creationsWithClicks } = await supabase
+    .from("store_clicks")
+    .select("creation_id")
+    .gte("clicked_at", dayStart.toISOString())
+    .lt("clicked_at", dayEnd.toISOString());
 
-  for (const { creationId } of creationsWithClicks) {
-    // Get stats for this creation on this date
-    const stats = await db
-      .select({
-        clicks: sql<number>`COUNT(*)`,
-        uniqueClicks: sql<number>`COUNT(DISTINCT session_id)`,
-      })
-      .from(creationClicks)
-      .where(
-        and(
-          eq(creationClicks.creationId, creationId),
-          gte(creationClicks.clickedAt, new Date(startOfDay * 1000)),
-          lte(creationClicks.clickedAt, new Date(endOfDay * 1000))
-        )
-      );
+  const creationIds = Array.from(
+    new Set((creationsWithClicks || []).map((c: any) => c.creation_id))
+  );
 
-    // Get installs for this creation on this date
-    const installsResult = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(creationInstalls)
-      .where(
-        and(
-          eq(creationInstalls.creationId, creationId),
-          gte(creationInstalls.installedAt, new Date(startOfDay * 1000)),
-          lte(creationInstalls.installedAt, new Date(endOfDay * 1000))
-        )
-      );
+  for (const creationId of creationIds) {
+    const { data: dayClicks } = await supabase
+      .from("store_clicks")
+      .select("session_id")
+      .eq("creation_id", creationId)
+      .gte("clicked_at", dayStart.toISOString())
+      .lt("clicked_at", dayEnd.toISOString());
 
-    // Calculate active users (returning visitors)
-    const activeUsers = await getActiveUsers(creationId, startOfDay);
+    const clicks = dayClicks?.length || 0;
+    const uniqueClicks = new Set((dayClicks || []).map((c: any) => c.session_id)).size;
+
+    const { count: installs } = await supabase
+      .from("store_installs")
+      .select("*", { count: "exact", head: true })
+      .eq("creation_id", creationId)
+      .gte("installed_at", dayStart.toISOString())
+      .lt("installed_at", dayEnd.toISOString());
+
+    // Active users in the last 30 days up to end of this day
+    const { data: activeRows } = await supabase
+      .from("store_clicks")
+      .select("session_id")
+      .eq("creation_id", creationId)
+      .lt("clicked_at", dayEnd.toISOString());
+    const activeUsers = new Set((activeRows || []).map((c: any) => c.session_id)).size;
 
     // Upsert daily stats
-    await db.run(sql`
-      INSERT INTO creation_daily_stats (creation_id, date, clicks, unique_clicks, installs, active_users)
-      VALUES (${creationId}, ${date}, ${stats[0].clicks}, ${stats[0].uniqueClicks}, ${installsResult[0].count}, ${activeUsers})
-      ON CONFLICT(creation_id, date) DO UPDATE SET
-        clicks = excluded.clicks,
-        unique_clicks = excluded.unique_clicks,
-        installs = excluded.installs,
-        active_users = excluded.active_users
-    `);
+    const { data: existing } = await supabase
+      .from("store_daily_stats")
+      .select("id")
+      .eq("creation_id", creationId)
+      .eq("date", date)
+      .maybeSingle();
+
+    if (existing) {
+      await supabase
+        .from("store_daily_stats")
+        .update({
+          clicks,
+          unique_clicks: uniqueClicks,
+          installs: installs || 0,
+          active_users: activeUsers,
+        })
+        .eq("id", existing.id);
+    } else {
+      await supabase.from("store_daily_stats").insert({
+        creation_id: creationId,
+        date,
+        clicks,
+        unique_clicks: uniqueClicks,
+        installs: installs || 0,
+        active_users: activeUsers,
+      });
+    }
   }
 }
 
@@ -368,34 +378,32 @@ export async function recordInstall(
   sessionId: string,
   userAgent?: string
 ): Promise<boolean> {
-  const creation = await db
-    .select({ id: creations.id, url: creations.url })
-    .from(creations)
-    .where(eq(creations.proxyCode, proxyCode))
-    .limit(1);
+  const supabase = db();
 
-  if (creation.length === 0) return false;
+  const { data: creation } = await supabase
+    .from("store_creations")
+    .select("id, url")
+    .eq("proxy_code", proxyCode)
+    .maybeSingle();
+
+  if (!creation) return false;
 
   // Check if this session already installed this creation (prevent duplicates)
-  const existingInstall = await db
-    .select()
-    .from(creationInstalls)
-    .where(
-      and(
-        eq(creationInstalls.creationId, creation[0].id),
-        eq(creationInstalls.sessionId, sessionId)
-      )
-    )
-    .limit(1);
+  const { data: existingInstall } = await supabase
+    .from("store_installs")
+    .select("id")
+    .eq("creation_id", creation.id)
+    .eq("session_id", sessionId)
+    .maybeSingle();
 
-  if (existingInstall.length > 0) return true; // Already installed
+  if (existingInstall) return true; // Already installed
 
   // Record the install
-  await db.insert(creationInstalls).values({
-    creationId: creation[0].id,
-    sessionId,
-    userAgent: userAgent || null,
-    installedAt: new Date(),
+  await supabase.from("store_installs").insert({
+    creation_id: creation.id,
+    session_id: sessionId,
+    user_agent: userAgent || null,
+    installed_at: new Date().toISOString(),
   });
 
   return true;
@@ -405,11 +413,16 @@ export async function recordInstall(
  * Get creation by proxy code
  */
 export async function getCreationByProxyCode(proxyCode: string) {
-  const result = await db
-    .select()
-    .from(creations)
-    .where(eq(creations.proxyCode, proxyCode))
-    .limit(1);
+  const supabase = db();
+  const { data } = await supabase
+    .from("store_creations")
+    .select("*")
+    .eq("proxy_code", proxyCode)
+    .maybeSingle();
 
-  return result[0] || null;
+  return data || null;
+}
+
+function now(): number {
+  return Date.now();
 }

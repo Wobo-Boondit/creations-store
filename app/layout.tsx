@@ -5,8 +5,7 @@ import Link from "next/link";
 import Logo from "@/public/logo.svg";
 import "./globals.css";
 import { Manrope as Font } from "next/font/google";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -29,7 +28,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await getServerSession(authOptions);
+  const user = await getCurrentUser();
 
   return (
     <html lang="en">
@@ -40,7 +39,7 @@ export default async function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <Header session={session} />
+          <Header user={user} />
           {children}
           <Footer />
         </ThemeProvider>
@@ -50,7 +49,7 @@ export default async function RootLayout({
   );
 }
 
-const Header = async ({ session }: { session: any }) => {
+const Header = async ({ user }: { user: any }) => {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-sm">
       <div className="flex h-12 items-center justify-between px-4 md:px-6">
@@ -69,7 +68,7 @@ const Header = async ({ session }: { session: any }) => {
           >
             ☕ Donate
           </Link>
-          {session?.user ? (
+          {user ? (
             <>
               <Link
                 href="/dashboard"

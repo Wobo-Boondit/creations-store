@@ -1,19 +1,20 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getUserCreations, getAllCategories } from "@/lib/data";
 import { UserCreationManager } from "@/components/user/user-creation-manager";
 import { LayoutGrid, FileText, FolderKanban } from "lucide-react";
 
-export default async function DashboardPage() {
-  const session = await getServerSession(authOptions);
+export const dynamic = "force-dynamic";
 
-  if (!session?.user?.id) {
-    redirect("/auth/login");
+export default async function DashboardPage() {
+  const user = await getCurrentUser();
+
+  if (!user?.id) {
+    redirect("/auth/signin");
   }
 
   const [creations, categories] = await Promise.all([
-    getUserCreations(session.user.id),
+    getUserCreations(user.id),
     getAllCategories(),
   ]);
 
@@ -36,7 +37,6 @@ export default async function DashboardPage() {
                 </p>
               </div>
             </div>
-
             {/* Stats */}
             <div className="grid gap-4 md:grid-cols-3">
               <div className="rounded-xl border bg-card p-6">
@@ -90,7 +90,7 @@ export default async function DashboardPage() {
             <UserCreationManager
               creations={creations}
               categories={categories}
-              userId={session.user.id}
+              userId={user.id}
             />
           </div>
         </div>

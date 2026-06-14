@@ -2,6 +2,8 @@
 import React from "react";
 import { Suspense } from "react";
 
+export const dynamic = "force-dynamic";
+
 // Database Imports
 import { getPublishedBookmarks, getAllCategories } from "@/lib/data";
 
@@ -47,14 +49,14 @@ export default async function Home({
   const sortedBookmarks = [...filteredBookmarks].sort((a, b) => {
     switch (sortParam) {
       case "oldest":
-        return a.createdAt.getTime() - b.createdAt.getTime();
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       case "az":
         return a.title.localeCompare(b.title);
       case "za":
         return b.title.localeCompare(a.title);
       case "newest":
       default:
-        return b.createdAt.getTime() - a.createdAt.getTime();
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     }
   });
 
@@ -131,7 +133,7 @@ export default async function Home({
                       user: bookmark.user
                         ? {
                             id: bookmark.user.id,
-                            name: bookmark.user.name,
+                            username: bookmark.user.username,
                           }
                         : null,
                       iconUrl: bookmark.iconUrl,
@@ -181,7 +183,7 @@ export default async function Home({
                       user: bookmark.user
                         ? {
                             id: bookmark.user.id,
-                            name: bookmark.user.name,
+                            username: bookmark.user.username,
                           }
                         : null,
                       iconUrl: bookmark.iconUrl,
@@ -237,7 +239,7 @@ export default async function Home({
                             user: bookmark.user
                               ? {
                                   id: bookmark.user.id,
-                                  name: bookmark.user.name,
+                                  username: bookmark.user.username,
                                 }
                               : null,
                             iconUrl: bookmark.iconUrl,
@@ -296,7 +298,7 @@ export default async function Home({
                       user: bookmark.user
                         ? {
                             id: bookmark.user.id,
-                            name: bookmark.user.name,
+                            username: bookmark.user.username,
                           }
                         : null,
                       iconUrl: bookmark.iconUrl,

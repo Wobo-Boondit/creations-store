@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/auth";
 import { getCreationScreenshots, addScreenshot, setMainScreenshot, deleteScreenshot, getCreationById } from "@/lib/data";
 
 export async function GET(
@@ -6,14 +7,8 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const creationId = Number(params.id);
-
-    if (isNaN(creationId)) {
-      return NextResponse.json({ error: "Invalid creation ID" }, { status: 400 });
-    }
-
+    const creationId = params.id as string;
     const screenshots = await getCreationScreenshots(creationId);
-
     return NextResponse.json({ screenshots });
   } catch (error) {
     console.error("Error fetching screenshots:", error);
@@ -29,12 +24,12 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   try {
-    const creationId = Number(params.id);
-
-    if (isNaN(creationId)) {
-      return NextResponse.json({ error: "Invalid creation ID" }, { status: 400 });
+    const user = await getCurrentUser();
+    if (!user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const creationId = params.id as string;
     const body = await request.json();
     const { url, isMain } = body;
 
@@ -46,6 +41,11 @@ export async function POST(
     const creation = await getCreationById(creationId);
     if (!creation) {
       return NextResponse.json({ error: "Creation not found" }, { status: 404 });
+    }
+
+    // Check ownership
+    if (creation.userId !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const screenshot = await addScreenshot(creationId, url, isMain || false);
@@ -65,7 +65,12 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    const creationId = Number(params.id);
+    const user = await getCurrentUser();
+    if (!user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const creationId = params.id as string;
     const body = await request.json();
     const { screenshotId } = body;
 
@@ -73,11 +78,17 @@ export async function PATCH(
       return NextResponse.json({ error: "Screenshot ID is required" }, { status: 400 });
     }
 
-    if (isNaN(creationId)) {
-      return NextResponse.json({ error: "Invalid creation ID" }, { status: 400 });
+    // Verify ownership
+    const creation = await getCreationById(creationId);
+    if (!creation) {
+      return NextResponse.json({ error: "Creation not found" }, { status: 404 });
     }
 
-    await setMainScreenshot(Number(screenshotId), creationId);
+    if (creation.userId !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    await setMainScreenshot(screenshotId as string, creationId);
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -94,6 +105,12 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const user = await getCurrentUser();
+    if (!user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const creationId = params.id as string;
     const body = await request.json();
     const { screenshotId } = body;
 
@@ -101,7 +118,17 @@ export async function DELETE(
       return NextResponse.json({ error: "Screenshot ID is required" }, { status: 400 });
     }
 
-    await deleteScreenshot(Number(screenshotId));
+    // Verify ownership
+    const creation = await getCreationById(creationId);
+    if (!creation) {
+      return NextResponse.json({ error: "Creation not found" }, { status: 404 });
+    }
+
+    if (creation.userId !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    await deleteScreenshot(screenshotId as string);
 
     return NextResponse.json({ success: true });
   } catch (error) {
