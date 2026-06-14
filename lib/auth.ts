@@ -10,7 +10,11 @@ export type CurrentUser = {
   isAdmin: boolean;
 };
 
-const ADMIN_DISCORD_ID = "592732401856282638";
+// Admin Discord IDs from env (comma-separated), not hardcoded in source
+const ADMIN_DISCORD_IDS = (process.env.ADMIN_DISCORD_IDS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
 /**
  * Get the current authenticated user from the Supabase session cookie.
@@ -46,7 +50,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   // Admin check: Aidan's Discord ID in the provider identity only
   const discordIdentity = user.app_metadata?.provider === "discord";
   const providerId = user.user_metadata?.provider_id as string;
-  const isAdmin = discordIdentity && providerId === ADMIN_DISCORD_ID;
+  const isAdmin = discordIdentity && ADMIN_DISCORD_IDS.includes(providerId);
 
   return {
     id: user.id,
