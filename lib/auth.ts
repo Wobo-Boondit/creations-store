@@ -26,9 +26,14 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   const admin = createAdminClient();
   const { data: profile } = await admin
     .from("users")
-    .select("id, username, avatar_url")
+    .select("id, username, avatar_url, is_suspended")
     .eq("id", user.id)
     .single();
+
+  // Enforce suspension
+  if (profile?.is_suspended) {
+    return null;
+  }
 
   // Determine display name from user metadata or profile
   const name =
@@ -38,11 +43,10 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     user.email?.split("@")[0] ||
     "User";
 
-  // Admin check: Aidan's Discord ID in the provider identity
+  // Admin check: Aidan's Discord ID in the provider identity only
   const discordIdentity = user.app_metadata?.provider === "discord";
   const providerId = user.user_metadata?.provider_id as string;
-  const emailMatch = user.email === "aidanpds@proton.me";
-  const isAdmin = (discordIdentity && providerId === ADMIN_DISCORD_ID) || emailMatch;
+  const isAdmin = discordIdentity && providerId === ADMIN_DISCORD_ID;
 
   return {
     id: user.id,

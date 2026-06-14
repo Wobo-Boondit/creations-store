@@ -1,40 +1,69 @@
 import { NextResponse } from "next/server";
 import { load } from "cheerio";
 import { getCurrentUser } from "@/lib/auth";
+import dns from "dns";
+import net from "net";
 
-// Block requests to internal/private IPs to prevent SSRF
-function isPrivateUrl(url: URL): boolean {
-  const host = url.hostname;
-  // Block loopback, link-local, private ranges, cloud metadata
+// Resolve hostname and check if any resolved IP is private/internal
+async function isPrivateHost(hostname: string): Promise<boolean> {
+  // Block obvious internal hostnames first
   if (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "0.0.0.0" ||
-    host === "::1" ||
-    host.startsWith("169.254.") || // link-local
-    host.startsWith("10.") ||
-    host.startsWith("192.168.") ||
-    host.startsWith("172.16.") ||
-    host.startsWith("172.17.") ||
-    host.startsWith("172.18.") ||
-    host.startsWith("172.19.") ||
-    host.startsWith("172.20.") ||
-    host.startsWith("172.21.") ||
-    host.startsWith("172.22.") ||
-    host.startsWith("172.23.") ||
-    host.startsWith("172.24.") ||
-    host.startsWith("172.25.") ||
-    host.startsWith("172.26.") ||
-    host.startsWith("172.27.") ||
-    host.startsWith("172.28.") ||
-    host.startsWith("172.29.") ||
-    host.startsWith("172.30.") ||
-    host.startsWith("172.31.") ||
-    host === "metadata.google.internal" ||
-    host.endsWith(".internal")
+    hostname === "localhost" ||
+    hostname.endsWith(".internal") ||
+    hostname.endsWith(".local") ||
+    hostname === "metadata.google.internal"
   ) {
     return true;
   }
+
+  // If it's already an IP literal, check directly
+  if (net.isIP(hostname)) {
+    return isPrivateIp(hostname);
+  }
+
+  // Resolve DNS and check all resolved IPs (defeats DNS rebinding + alt encodings)
+  try {
+    const addresses = await dns.promises.lookup(hostname, { all: true });
+    for (const addr of addresses) {
+      if (isPrivateIp(addr.address)) return true;
+    }
+  } catch {
+    // DNS resolution failed — block by default
+    return true;
+  }
+
+  return false;
+}
+
+function isPrivateIp(ip: string): boolean {
+  // Parse IPv4
+  const parts = ip.split(".").map(Number);
+  if (parts.length === 4 && parts.every((p) => p >= 0 && p <= 255)) {
+    // Loopback 127.0.0.0/8
+    if (parts[0] === 127) return true;
+    // Private 10.0.0.0/8
+    if (parts[0] === 10) return true;
+    // Private 172.16.0.0/12
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+    // Private 192.168.0.0/16
+    if (parts[0] === 192 && parts[1] === 168) return true;
+    // Link-local 169.254.0.0/16 (cloud metadata)
+    if (parts[0] === 169 && parts[1] === 254) return true;
+    // 0.0.0.0/8
+    if (parts[0] === 0) return true;
+    // IPv4-mapped IPv6 ::ffff:127.0.0.1 etc handled by net
+  }
+
+  // Check IPv6 loopback/private
+  const lower = ip.toLowerCase();
+  if (lower === "::1" || lower === "::" || lower.startsWith("fe80:") || lower.startsWith("fc") || lower.startsWith("fd")) {
+    return true;
+  }
+
+  // IPv4-mapped IPv6: ::ffff:x.x.x.x
+  const v4Mapped = lower.match(/::ffff:(\d+\.\d+\.\d+\.\d+)/);
+  if (v4Mapped) return isPrivateIp(v4Mapped[1]);
+
   return false;
 }
 
@@ -75,8 +104,8 @@ export async function GET(request: Request) {
       );
     }
 
-    // Block SSRF — no internal/private IPs
-    if (isPrivateUrl(validUrl)) {
+    // Block SSRF — resolve DNS and check all IPs (defeats decimal/hex/octal/DNS rebinding)
+    if (await isPrivateHost(validUrl.hostname)) {
       return NextResponse.json(
         { error: "URL not accessible" },
         { status: 403 },

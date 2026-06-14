@@ -38,7 +38,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const ext = file.name.split(".").pop()?.toLowerCase() || "png";
+    // Derive extension from validated MIME type, not user-controlled filename
+    const extMap: Record<string, string> = {
+      "image/png": "png",
+      "image/jpeg": "jpg",
+      "image/webp": "webp",
+      "image/gif": "gif",
+    };
+    const ext = extMap[file.type] || "png";
     const filename = `${user.id}/${randomUUID()}.${ext}`;
 
     const buffer = Buffer.from(await file.arrayBuffer());

@@ -150,6 +150,12 @@ export async function registerUser(
   prevState: ActionState | null,
   formData: { email: string; password: string; name: string },
 ): Promise<ActionState> {
+  // Admin-only — prevents unauthenticated account pre-hijacking
+  const adminCheck = await isAdmin();
+  if (!adminCheck) {
+    return { error: "Unauthorized" };
+  }
+
   try {
     const { email, password, name } = formData;
     const admin = createAdminClient();
