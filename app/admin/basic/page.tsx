@@ -166,16 +166,63 @@ export default function AdminPage() {
               htmlFor="iconUrl"
               className="mb-1 block text-sm font-medium"
             >
-              Icon URL
+              Icon
             </label>
-            <input
-              type="url"
-              id="iconUrl"
-              name="iconUrl"
-              value={formData.iconUrl}
-              onChange={handleChange}
-              className="w-full rounded-md border p-2"
-            />
+            <input type="hidden" id="iconUrl" name="iconUrl" value={formData.iconUrl} />
+            <div className="flex items-center gap-3">
+              {formData.iconUrl ? (
+                <img
+                  src={formData.iconUrl}
+                  alt="Icon preview"
+                  className="h-12 w-12 rounded-lg border object-cover"
+                />
+              ) : (
+                <div className="h-12 w-12 rounded-lg border flex items-center justify-center text-gray-400">
+                  No icon
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = "image/*";
+                  input.onchange = async (e) => {
+                    const target = e.target as HTMLInputElement;
+                    if (!target.files?.[0]) return;
+                    const file = target.files[0];
+                    if (!file.type.startsWith("image/")) return;
+                    const uploadData = new FormData();
+                    uploadData.append("file", file);
+                    try {
+                      const res = await fetch("/api/screenshots/upload", {
+                        method: "POST",
+                        body: uploadData,
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        setFormData((prev) => ({ ...prev, iconUrl: data.url }));
+                      }
+                    } catch (err) {
+                      console.error("Icon upload failed:", err);
+                    }
+                  };
+                  input.click();
+                }}
+                className="rounded-md border px-3 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                {formData.iconUrl ? "Replace" : "Upload"}
+              </button>
+              {formData.iconUrl && (
+                <button
+                  type="button"
+                  onClick={() => setFormData((prev) => ({ ...prev, iconUrl: "" }))}
+                  className="text-sm text-gray-500 hover:text-red-500"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
 
           <div>

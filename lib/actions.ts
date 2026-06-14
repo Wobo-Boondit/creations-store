@@ -21,6 +21,23 @@ export type ActionState = {
   };
 };
 
+/**
+ * Validate that an image URL comes from our own CDN.
+ * Non-CDN URLs are rejected to prevent SSRF and external dependency.
+ */
+function isCdnUrl(url: string): boolean {
+  if (!url) return true; // empty is fine
+  try {
+    const parsed = new URL(url);
+    const cdnHost = process.env.S3_PUBLIC_URL
+      ? new URL(process.env.S3_PUBLIC_URL).hostname
+      : "cdn.boondit.site";
+    return parsed.hostname === cdnHost;
+  } catch {
+    return false;
+  }
+}
+
 // Helper function to fetch metadata for bulk upload
 async function generateContent(url: string) {
   try {
@@ -44,7 +61,7 @@ async function generateContent(url: string) {
       url: metadata.url,
       overview: "",
       searchResults: "",
-      iconUrl: metadata.favicon,
+      iconUrl: "", // icons must be uploaded to our CDN, not scraped from favicons
       ogImage: metadata.ogImage,
       slug,
       error: null,
@@ -75,6 +92,45 @@ type CreationData = {
 // ============================================================
 // User Actions
 // ============================================================
+
+export async function updateProfile(
+  prevState: ActionState | null,
+  formData: { username: string },
+): Promise<ActionState> {
+  try {
+    const sessionUser = await getCurrentUser();
+    if (!sessionUser) {
+      return { error: "Unauthorized" };
+    }
+
+    const username = formData.username?.trim();
+    if (!username || username.length < 2) {
+      return { error: "Username must be at least 2 characters" };
+    }
+    if (username.length > 32) {
+      return { error: "Username must be 32 characters or less" };
+    }
+
+    const admin = createAdminClient();
+
+    // Update the profile in public.users
+    const { error } = await admin
+      .from("users")
+      .update({ username })
+      .eq("id", sessionUser.id);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/dashboard/settings");
+    return { success: true };
+  } catch (err) {
+    console.error("Error updating profile:", err);
+    return { error: "Failed to update profile" };
+  }
+}
 
 export async function registerUser(
   prevState: ActionState | null,
@@ -309,6 +365,11 @@ export async function createCreation(
     }
     const admin = createAdminClient();
 
+    // Validate icon URL comes from our CDN
+    if (formData.iconUrl && !isCdnUrl(formData.iconUrl)) {
+      return { error: "Icon must be uploaded through Boondit CDN" };
+    }
+
     let slug = formData.slug;
     if (!slug) {
       slug = generateSlug(formData.title);
@@ -324,7 +385,7 @@ export async function createCreation(
       is_favorite: formData.isFavorite === "true",
       is_archived: formData.isArchived === "true",
       overview: formData.overview,
-      icon_url: formData.iconUrl,
+      icon_url: formData.iconUrl || null,
       og_image: formData.ogImage,
       theme_color: formData.themeColor,
       author: formData.author,
@@ -397,6 +458,11 @@ export async function updateCreation(
 
     if (creation.user_id !== sessionUser.id) {
       return { error: "Unauthorized" };
+    }
+
+    // Validate icon URL comes from our CDN
+    if (formData.iconUrl && !isCdnUrl(formData.iconUrl)) {
+      return { error: "Icon must be uploaded through Boondit CDN" };
     }
 
     let slug = formData.slug;
@@ -755,7 +821,7 @@ export async function scrapeUrl(
       data: {
         title: metadata.title || "",
         description: metadata.description || "",
-        iconUrl: metadata.favicon || "",
+        iconUrl: "", // icons must be uploaded to our CDN
         ogImage: metadata.ogImage || "",
         url: metadata.url || url,
       },

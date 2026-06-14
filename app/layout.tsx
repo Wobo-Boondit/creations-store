@@ -67,6 +67,12 @@ const Header = async ({ user }: { user: any }) => {
               >
                 Dashboard
               </Link>
+              <Link
+                href="/dashboard/settings"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors px-3 py-1.5 rounded-md hover:bg-card"
+              >
+                Settings
+              </Link>
               <form action={signOut} className="inline">
                 <button
                   type="submit"

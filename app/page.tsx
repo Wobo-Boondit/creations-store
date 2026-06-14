@@ -105,6 +105,8 @@ export default async function Home({
     favicon: bookmark.favicon,
     overview: bookmark.overview,
     ogImage: bookmark.ogImage,
+    themeColor: bookmark.themeColor,
+    author: bookmark.author,
     isArchived: bookmark.isArchived,
     isFavorite: bookmark.isFavorite,
     slug: bookmark.slug,

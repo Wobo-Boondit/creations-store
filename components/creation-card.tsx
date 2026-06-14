@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -59,6 +58,7 @@ export const CreationCard = ({ creation }: CreationCardProps) => {
   const [installDialogOpen, setInstallDialogOpen] = useState(false);
 
   const iconSrc = creation.iconUrl || creation.favicon || creation.ogImage;
+  const accent = creation.themeColor || undefined;
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '');
   const proxyUrl = creation.proxyCode ? `${siteUrl}/go/${creation.proxyCode}` : creation.url;
@@ -80,14 +80,30 @@ export const CreationCard = ({ creation }: CreationCardProps) => {
       <Link href={detailsUrl} className="group block h-full">
         <div
           className={cn(
-            "flex flex-col overflow-hidden rounded-md border border-border bg-card transition-all duration-200 hover:-translate-y-0.5 hover:border-primary hover:shadow-lg h-full",
+            "relative flex flex-col overflow-hidden rounded-md border border-border bg-card transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg h-full",
+            "[&[style*='--card-accent']]:hover:border-[var(--card-accent)]",
             creation.isArchived && "opacity-75 hover:opacity-100",
           )}
+          style={accent ? {
+            // hover border color is controlled by group-hover via CSS var
+            ["--card-accent" as string]: accent,
+          } : undefined}
         >
+          {/* Accent top bar */}
+          {accent && (
+            <div
+              className="h-0.5 w-full"
+              style={{ backgroundColor: accent }}
+            />
+          )}
+
           {/* Icon Header */}
           <div className="relative p-4 pb-3">
             <div className="flex items-start justify-between">
-              <div className="flex items-center justify-center rounded-md border border-border bg-background p-2">
+              <div
+                className="flex items-center justify-center rounded-md border border-border bg-background p-2"
+                style={accent ? { borderColor: `${accent}40` } : undefined}
+              >
                 {iconSrc ? (
                   <img
                     src={iconSrc}
@@ -99,6 +115,7 @@ export const CreationCard = ({ creation }: CreationCardProps) => {
                 ) : (
                   <AppWindow
                     className="h-12 w-12 text-muted-foreground"
+                    style={accent ? { color: `${accent}80` } : undefined}
                     aria-hidden="true"
                   />
                 )}
@@ -106,7 +123,11 @@ export const CreationCard = ({ creation }: CreationCardProps) => {
 
               <div className="flex gap-1.5">
                 {creation.isFavorite && (
-                  <Star className="h-4 w-4 text-primary" aria-label="Featured" />
+                  <Star
+                    className="h-4 w-4"
+                    style={{ color: accent || undefined }}
+                    aria-label="Featured"
+                  />
                 )}
                 {creation.isArchived && (
                   <Archive className="h-4 w-4 text-muted-foreground" aria-label="Archived" />
@@ -116,7 +137,16 @@ export const CreationCard = ({ creation }: CreationCardProps) => {
 
             {creation.category && (
               <div className="mt-3">
-                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span
+                  className="rounded px-1.5 py-0.5 text-[10px] font-medium"
+                  style={accent ? {
+                    backgroundColor: `${accent}18`,
+                    color: accent,
+                  } : {
+                    backgroundColor: "hsl(var(--muted))",
+                    color: "hsl(var(--muted-foreground))",
+                  }}
+                >
                   {creation.category.name}
                 </span>
               </div>
@@ -126,7 +156,10 @@ export const CreationCard = ({ creation }: CreationCardProps) => {
           {/* Info Section */}
           <div className="flex flex-1 flex-col p-4 pt-0 space-y-2">
             <div className="space-y-1">
-              <h3 className="truncate text-sm font-medium text-foreground">
+              <h3
+                className="truncate text-sm font-medium text-foreground"
+                style={accent ? { color: accent } : undefined}
+              >
                 {creation.title}
               </h3>
               {(creation.author || creation.user) && (
@@ -155,7 +188,11 @@ export const CreationCard = ({ creation }: CreationCardProps) => {
               <Button
                 variant="outline"
                 size="sm"
-                className="w-full chromatic-press"
+                className={cn("w-full chromatic-press", !accent && "")}
+                style={accent ? {
+                  borderColor: `${accent}40`,
+                  color: accent,
+                } : undefined}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
