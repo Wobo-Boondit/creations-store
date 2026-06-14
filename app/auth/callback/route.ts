@@ -19,7 +19,10 @@ export async function GET(request: Request) {
           getAll: () => cookieStore.getAll(),
           setAll: (cs: { name: string; value: string; options?: any }[]) =>
             cs.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
+              cookieStore.set(name, value, {
+                ...options,
+                domain: ".boondit.site",
+              })
             ),
         },
       }
