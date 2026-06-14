@@ -122,8 +122,8 @@ export async function GET(request: Request) {
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: `Failed to fetch URL: ${response.statusText}` },
-        { status: response.status },
+        { error: "Failed to fetch URL" },
+        { status: 502 },
       );
     }
 
@@ -181,16 +181,12 @@ export async function GET(request: Request) {
       url: validUrl.toString(),
     };
 
-    console.log("Generated metadata:", metadata);
-
     return NextResponse.json(metadata);
   } catch (error) {
-    const statusCode = error instanceof Error ? 500 : (error as { statusCode?: number }).statusCode || 500;
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-    console.error("Error fetching metadata:", errorMessage);
+    console.error("Error fetching metadata:", error);
     return NextResponse.json(
-      { error: `Failed to fetch or parse metadata: ${errorMessage}` },
-      { status: statusCode },
+      { error: "Failed to fetch or parse metadata" },
+      { status: 500 },
     );
   }
 }

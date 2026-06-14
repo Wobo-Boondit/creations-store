@@ -100,7 +100,7 @@ export default async function Page({ params }: Props) {
   const headersList = await headers();
 
   // Get a consistent session identifier for view tracking
-  // Use user ID if logged in, otherwise use IP address
+  // Use user ID if logged in, otherwise anonymized IP hash
   let viewSessionId: string;
   if (bookmark.user?.id) {
     viewSessionId = `user_${bookmark.user.id}`;
@@ -110,13 +110,12 @@ export default async function Page({ params }: Props) {
     const realIp = headersList.get('x-real-ip');
     const ip = forwarded ? forwarded.split(',')[0].trim() : realIp || 'localhost';
 
-    // For local development, normalize common local IPs
-    const normalizedIp = (ip === '::1' || ip === '127.0.0.1' || ip === 'localhost') ? 'local_dev' : ip;
+    // Anonymize IP — keep /24 subnet for dedup, drop host portion (privacy)
+    const normalizedIp = (ip === '::1' || ip === '127.0.0.1' || ip === 'localhost')
+      ? 'local_dev'
+      : ip.replace(/(\d+)\.(\d+)\.(\d+)\.(\d+)/, '$1.$2.$3.0');
 
     viewSessionId = `anon_${normalizedIp}`;
-
-    // Log for debugging
-    console.log(`[View Tracking] Session ID: ${viewSessionId}, Creation ID: ${bookmark.id}`);
   }
 
   // Increment views in the background with rate limiting

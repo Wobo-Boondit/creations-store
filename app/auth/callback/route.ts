@@ -11,6 +11,10 @@ function resolveOrigin(request: Request): string {
       /* malformed env — fall through */
     }
   }
+  // In production, fail closed — never trust client-controlled headers for OAuth redirect origin
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("NEXT_PUBLIC_SITE_URL must be set in production");
+  }
   const proto =
     request.headers.get("x-forwarded-proto") ?? "https";
   const host =
@@ -19,14 +23,18 @@ function resolveOrigin(request: Request): string {
   return new URL(request.url).origin;
 }
 
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || ".boondit.site";
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const origin = resolveOrigin(request);
+  let origin: string;
+  try {
+    origin = resolveOrigin(request);
+  } catch {
+    return NextResponse.redirect(new URL("/auth/signin?error=config", requestUrl.origin));
+  }
   const cookieStore = cookies();
-
-  console.log("[callback] hit. code:", code ? "present" : "missing");
-  console.log("[callback] cookies:", cookieStore.getAll().map(c => c.name).join(", "));
 
   const success = NextResponse.redirect(new URL("/dashboard", origin));
 
@@ -41,10 +49,9 @@ export async function GET(request: Request) {
           },
           setAll(cookiesToSet: { name: string; value: string; options?: any }[]) {
             for (const { name, value, options } of cookiesToSet) {
-              console.log("[callback] SET cookie:", name, "len:", value.length);
               success.cookies.set(name, value, {
                 ...options,
-                domain: ".boondit.site",
+                domain: COOKIE_DOMAIN,
               });
             }
           },
@@ -54,12 +61,10 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
-      console.log("[callback] exchange ERROR:", error.message);
       return NextResponse.redirect(
-        new URL(`/auth/signin?error=${encodeURIComponent(error.message)}`, origin)
+        new URL(`/auth/signin?error=${encodeURIComponent("auth_failed")}`, origin)
       );
     }
-    console.log("[callback] exchange OK, user:", data?.user?.email ?? "none");
   }
 
   return success;

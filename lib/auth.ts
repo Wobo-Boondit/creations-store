@@ -47,10 +47,11 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     user.email?.split("@")[0] ||
     "User";
 
-  // Admin check: Aidan's Discord ID in the provider identity only
-  const discordIdentity = user.app_metadata?.provider === "discord";
-  const providerId = user.user_metadata?.provider_id as string;
-  const isAdmin = discordIdentity && ADMIN_DISCORD_IDS.includes(providerId);
+  // Admin check: read Discord ID from identities[] (server-managed, NOT client-writable)
+  // user_metadata.provider_id is client-writable via auth.updateUser() — never use it for authz
+  const discordIdentity = user.identities?.find((i) => i.provider === "discord");
+  const discordProviderId = discordIdentity?.identity_data?.provider_id as string | undefined;
+  const isAdmin = !!discordProviderId && ADMIN_DISCORD_IDS.includes(discordProviderId);
 
   return {
     id: user.id,
