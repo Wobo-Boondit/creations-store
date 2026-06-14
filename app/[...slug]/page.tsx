@@ -7,7 +7,7 @@ import Balancer from "react-wrap-balancer";
 export const dynamic = "force-dynamic";
 
 // Database Imports
-import { getCreationBySlug, incrementCreationViews, getCreationReviews } from "@/lib/data";
+import { getCreationBySlug, getCreationById, incrementCreationViews, getCreationReviews } from "@/lib/data";
 
 // Component Imports
 import { Section, Container } from "@/components/craft";
@@ -23,6 +23,20 @@ import { Metadata, ResolvingMetadata } from "next";
 import Markdown from "react-markdown";
 import { getCurrentUser } from "@/lib/auth";
 
+// UUID regex to extract ID from "{uuid}-{slug}" format
+const UUID_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+
+async function resolveCreation(slugPath: string) {
+  // Try UUID prefix first (card links are /{uuid}-{slug})
+  const uuidMatch = slugPath.match(UUID_RE);
+  if (uuidMatch) {
+    const byId = await getCreationById(uuidMatch[1]);
+    if (byId) return byId;
+  }
+  // Fall back to direct slug lookup
+  return getCreationBySlug(slugPath);
+}
+
 type Props = {
   params: { slug: string[] };
 };
@@ -31,10 +45,9 @@ export async function generateMetadata(
   { params }: Props,
   parent: ResolvingMetadata,
 ): Promise<Metadata> {
-  // Look up by slug from the URL path
   const slug = params.slug.join('/');
 
-  const bookmark = await getCreationBySlug(slug);
+  const bookmark = await resolveCreation(slug);
 
   if (!bookmark) {
     return {
@@ -69,10 +82,9 @@ export async function generateMetadata(
 }
 
 export default async function Page({ params }: Props) {
-  // Look up by slug from the URL path
   const slug = params.slug.join('/');
 
-  const bookmark = await getCreationBySlug(slug);
+  const bookmark = await resolveCreation(slug);
 
   if (!bookmark) {
     notFound();

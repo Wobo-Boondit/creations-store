@@ -3,15 +3,15 @@ import { Analytics } from "@vercel/analytics/react";
 import Link from "next/link";
 import Logo from "@/public/logo.svg";
 import "./globals.css";
-import { Space_Grotesk as Font } from "next/font/google";
+import local from "next/font/local";
 import { getCurrentUser } from "@/lib/auth";
 import { signOut } from "@/lib/actions";
 import { directory } from "@/directory.config";
 
-const font = Font({
-  subsets: ["latin"],
+const font = local({
+  src: "./fonts/PowerGrotesk-Regular.ttf",
   display: "swap",
-  variable: "--font-space-grotesk",
+  variable: "--font-power-grotesk",
 });
 
 export const metadata: Metadata = {
