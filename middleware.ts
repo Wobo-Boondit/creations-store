@@ -40,7 +40,10 @@ export async function middleware(request: NextRequest) {
         },
         setAll(cookiesToSet: { name: string; value: string; options?: any }[]) {
           cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options);
+            response.cookies.set(name, value, {
+              ...options,
+              domain: ".boondit.site",
+            });
           });
         },
       },

@@ -17,13 +17,12 @@ export async function createServerSupabaseClient() {
           return cookieStore.getAll();
         },
         setAll(cookiesToSet: { name: string; value: string; options?: any }[]) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          } catch {
-            // Called from a Server Component — middleware handles cookie refresh
-          }
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, {
+              ...options,
+              domain: ".boondit.site",
+            });
+          });
         },
       },
     }
