@@ -19,6 +19,21 @@ export async function DELETE(
     const { id, linkId } = await params
     const supabase = createAdminClient()
 
+    // Get the link first to find device_id for API key revocation
+    const { data: link } = await supabase
+      .from('creation_links')
+      .select('device_id')
+      .eq('id', linkId)
+      .eq('client_id', id)
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .single()
+
+    if (!link) {
+      return NextResponse.json({ error: 'link_not_found' }, { status: 404 })
+    }
+
+    // Deactivate the link
     const { error } = await supabase
       .from('creation_links')
       .update({ is_active: false })
@@ -31,11 +46,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'update_failed' }, { status: 500 })
     }
 
-    // Also revoke any API keys for this device
+    // Revoke any API keys for this device
     await supabase
       .from('api_keys')
       .update({ is_active: false })
-      .eq('device_id', linkId)
+      .eq('device_id', link.device_id)
       .eq('user_id', user.id)
 
     return NextResponse.json({ unlinked: true })

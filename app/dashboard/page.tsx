@@ -2,8 +2,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getUserCreations, getAllCategories } from "@/lib/data";
 import { UserCreationManager } from "@/components/user/user-creation-manager";
-import { LayoutGrid, FileText, FolderKanban, Smartphone } from "lucide-react";
-import Link from "next/link";
+import { LayoutGrid, FileText, FolderKanban } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -85,27 +84,6 @@ export default async function DashboardPage() {
                   </div>
                 </div>
               </div>
-            </div>
-
-            {/* R1 Platform */}
-            <div>
-              <Link href="/dashboard/platform" className="block">
-                <div className="rounded-xl border bg-card p-6 hover:border-primary/30 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                      <Smartphone className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <div className="text-lg font-bold">
-                        R1 Platform
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-0.5">
-                        Linked creations & API keys
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </Link>
             </div>
 
             {/* Creation Manager */}

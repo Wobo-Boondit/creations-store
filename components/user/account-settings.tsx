@@ -1,13 +1,72 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { updateProfile, signOut } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, Check, LogOut } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Loader2,
+  Check,
+  LogOut,
+  Smartphone,
+  Link2,
+  Unlink,
+  Key,
+  Plus,
+  Trash2,
+  Copy,
+  Clock,
+  Code,
+  ChevronDown,
+  AlertTriangle,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { CurrentUser } from "@/lib/auth";
+
+// ─── Types ────────────────────────────────────────────────────────
+
+interface CreationLink {
+  id: string;
+  client_id: string;
+  device_id: string;
+  device_name: string | null;
+  linked_at: string;
+  last_seen: string | null;
+  is_active: boolean;
+}
+
+interface Creation {
+  client_id: string;
+  name: string;
+  description: string;
+  icon_url: string | null;
+  is_first_party: boolean;
+  sort_order: number;
+  links: CreationLink[];
+  isLinked: boolean;
+}
+
+interface ApiKey {
+  key_id: string;
+  key_preview: string;
+  device_id: string;
+  name: string;
+  created_at: string;
+  last_used: string | null;
+  is_active: boolean;
+}
+
+interface R1AStats {
+  totalRequests: number;
+  deviceOnline: boolean;
+  lastActivity: string | null;
+}
+
+const API_BASE_URL = "https://creations.boondit.site";
+
+// ─── Main Component ───────────────────────────────────────────────
 
 export function AccountSettings({ user }: { user: CurrentUser }) {
   const [username, setUsername] = useState(user.username || user.name);
@@ -118,6 +177,12 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
         </div>
       </div>
 
+      {/* ─── R1A Sections ─────────────────────────────────────── */}
+      <R1ADeviceSection />
+      <ApiKeysSection />
+      <ApiDocsSection />
+      {/* ─── End R1A Sections ─────────────────────────────────── */}
+
       {/* Account info */}
       <div className="rounded-xl border bg-card p-6 space-y-3">
         <h3 className="font-semibold">Account Details</h3>
@@ -134,14 +199,21 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
       </div>
 
       {/* Sign out */}
-      <form action={signOut} className="rounded-xl border border-red-900/30 bg-red-950/20 p-6 flex items-center justify-between">
+      <form
+        action={signOut}
+        className="rounded-xl border border-red-900/30 bg-red-950/20 p-6 flex items-center justify-between"
+      >
         <div>
           <h3 className="font-semibold text-red-400">Sign Out</h3>
           <p className="text-sm text-muted-foreground">
             Sign out of your Boondit account on this device
           </p>
         </div>
-        <Button type="submit" variant="outline" className="border-red-900/50 text-red-400 hover:bg-red-900/20 hover:text-red-400">
+        <Button
+          type="submit"
+          variant="outline"
+          className="border-red-900/50 text-red-400 hover:bg-red-900/20 hover:text-red-400"
+        >
           <LogOut className="h-4 w-4 mr-2" />
           Sign Out
         </Button>
@@ -149,6 +221,512 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
     </div>
   );
 }
+
+// ─── R1A Device Section ───────────────────────────────────────────
+
+function R1ADeviceSection() {
+  const [r1aCreation, setR1aCreation] = useState<Creation | null>(null);
+  const [stats, setStats] = useState<R1AStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [linking, setLinking] = useState(false);
+  const [, startTransition] = useTransition();
+
+  const loadData = async () => {
+    try {
+      const res = await fetch("/api/creations");
+      const data = await res.json();
+      const r1a = (data.creations || []).find(
+        (c: Creation) => c.client_id === "r1a",
+      );
+      setR1aCreation(r1a || null);
+    } catch {
+      // ignore
+    }
+    // Stats are best-effort
+    fetch("/api/r1a/stats")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => {
+        if (s) setStats(s as R1AStats);
+      })
+      .catch(() => {});
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const link = r1aCreation?.links?.[0] || null;
+
+  const handleLink = () => {
+    setLinking(true);
+    startTransition(async () => {
+      const res = await fetch("/api/oauth/direct-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: "r1a" }),
+      });
+      setLinking(false);
+      if (res.ok) {
+        toast.success("R1A linked to your account");
+        loadData();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast.error(d.error || "Failed to link R1A");
+      }
+    });
+  };
+
+  const handleUnlink = () => {
+    if (!link || !r1aCreation) return;
+    if (!confirm("Unlink your R1A device? You can re-link at any time.")) return;
+    startTransition(async () => {
+      const res = await fetch(
+        `/api/creations/${r1aCreation.client_id}/links/${link.id}`,
+        { method: "DELETE" },
+      );
+      if (res.ok) {
+        toast.success("R1A device unlinked");
+        loadData();
+      } else {
+        toast.error("Failed to unlink");
+      }
+    });
+  };
+
+  const online = stats?.deviceOnline === true;
+
+  return (
+    <div className="rounded-xl border bg-card p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+            <Smartphone className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold">R1A Device</h3>
+            <p className="text-xs text-muted-foreground">
+              Control your R1 from anywhere via the OpenAI-compatible API
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-6">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : link ? (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-4 py-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="font-medium text-sm truncate">
+                  {link.device_name || link.device_id}
+                </p>
+                <Badge
+                  variant="secondary"
+                  className={
+                    online
+                      ? "bg-green-500/10 text-green-500 hover:bg-green-500/10"
+                      : ""
+                  }
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full mr-1 ${
+                      online ? "bg-green-500" : "bg-muted-foreground"
+                    }`}
+                  />
+                  {online ? "Online" : "Offline"}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-1 mt-1">
+                <Clock className="h-3 w-3 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground">
+                  {link.last_seen
+                    ? `Last seen ${formatRelativeTime(link.last_seen)}`
+                    : `Linked ${formatRelativeTime(link.linked_at)}`}
+                </p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleUnlink}
+              className="border-red-900/40 text-red-400 hover:bg-red-900/20 hover:text-red-400"
+            >
+              <Unlink className="h-3.5 w-3.5 mr-1.5" />
+              Unlink
+            </Button>
+          </div>
+
+          {stats && (
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-lg border bg-muted/20 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Total Requests</p>
+                <p className="font-semibold">{stats.totalRequests}</p>
+              </div>
+              <div className="rounded-lg border bg-muted/20 px-3 py-2">
+                <p className="text-xs text-muted-foreground">Last Activity</p>
+                <p className="font-semibold text-sm">
+                  {stats.lastActivity
+                    ? formatRelativeTime(stats.lastActivity)
+                    : "Never"}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Link your R1A device to generate API keys and control your R1
+            remotely. No QR code required.
+          </p>
+          <Button onClick={handleLink} disabled={linking} size="sm">
+            {linking ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Linking...
+              </>
+            ) : (
+              <>
+                <Link2 className="h-4 w-4 mr-2" />
+                Link R1A
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── API Keys Section ─────────────────────────────────────────────
+
+function ApiKeysSection() {
+  const [keys, setKeys] = useState<ApiKey[]>([]);
+  const [r1aLinked, setR1aLinked] = useState(false);
+  const [r1aDeviceId, setR1aDeviceId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [keyName, setKeyName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [newKey, setNewKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const loadData = async () => {
+    const [keysRes, creationsRes] = await Promise.all([
+      fetch("/api/keys"),
+      fetch("/api/creations"),
+    ]);
+    const keysData = await keysRes.json();
+    const creationsData = await creationsRes.json();
+
+    setKeys(keysData.keys || []);
+    const r1a = (creationsData.creations || []).find(
+      (c: Creation) => c.client_id === "r1a",
+    );
+    setR1aLinked(!!r1a?.isLinked);
+    setR1aDeviceId(r1a?.links?.[0]?.device_id || null);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleCreate = async () => {
+    if (!r1aDeviceId) {
+      toast.error("Link your R1A device first");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch("/api/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deviceId: r1aDeviceId,
+          name: keyName.trim() || "Default",
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setNewKey(data.key);
+        setShowForm(false);
+        setKeyName("");
+        loadData();
+        toast.success("API key created");
+      } else {
+        const d = await res.json().catch(() => ({}));
+        toast.error(d.error || "Failed to create key");
+      }
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleRevoke = async (keyId: string) => {
+    if (!confirm("Revoke this API key? This cannot be undone.")) return;
+    const res = await fetch(`/api/keys/${keyId}`, { method: "DELETE" });
+    if (res.ok) {
+      toast.success("Key revoked");
+      loadData();
+    } else {
+      toast.error("Failed to revoke key");
+    }
+  };
+
+  const handleCopy = () => {
+    if (!newKey) return;
+    navigator.clipboard.writeText(newKey);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="rounded-xl border bg-card p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+            <Key className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold">API Keys</h3>
+            <p className="text-xs text-muted-foreground">
+              OpenAI-compatible keys for R1 API access
+            </p>
+          </div>
+        </div>
+        {r1aLinked && (
+          <Button size="sm" onClick={() => setShowForm((v) => !v)}>
+            <Plus className="h-4 w-4 mr-1.5" />
+            Create New Key
+          </Button>
+        )}
+      </div>
+
+      {!r1aLinked && !loading && (
+        <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
+          Link your R1A device above to create API keys.
+        </div>
+      )}
+
+      {showForm && (
+        <div className="rounded-lg border bg-muted/20 p-4 space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="keyname">Label (optional)</Label>
+            <Input
+              id="keyname"
+              value={keyName}
+              onChange={(e) => setKeyName(e.target.value)}
+              placeholder="e.g. Living Room R1"
+              maxLength={64}
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={handleCreate} disabled={creating}>
+              {creating ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Key"
+              )}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setShowForm(false);
+                setKeyName("");
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {newKey && (
+        <div className="rounded-lg border-2 border-yellow-500/40 bg-yellow-500/5 p-4 space-y-2">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5 shrink-0" />
+            <p className="text-sm font-medium text-yellow-600 dark:text-yellow-500">
+              Save this key now. It will not be shown again.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 rounded-md border bg-background px-3 py-2 text-xs font-mono break-all">
+              {newKey}
+            </code>
+            <Button size="sm" variant="outline" onClick={handleCopy}>
+              {copied ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setNewKey(null)}
+          >
+            I&apos;ve saved it
+          </Button>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center py-4">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : keys.length === 0 ? (
+        <div className="rounded-lg border border-dashed bg-muted/20 px-4 py-6 text-center">
+          <Key className="h-6 w-6 mx-auto text-muted-foreground mb-1" />
+          <p className="text-sm text-muted-foreground">
+            {r1aLinked
+              ? "No API keys yet. Create one to get started."
+              : "Link your R1A device first, then create a key."}
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-lg border divide-y">
+          {keys.map((k) => (
+            <div key={k.key_id} className="flex items-center gap-3 p-3">
+              <Key className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm truncate">{k.name}</p>
+                <code className="text-xs font-mono text-muted-foreground">
+                  {k.key_preview}
+                </code>
+              </div>
+              <div className="text-right shrink-0">
+                {k.last_used ? (
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 justify-end">
+                    <Clock className="h-3 w-3" />
+                    {new Date(k.last_used).toLocaleDateString()}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Never used</p>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-red-400 hover:text-red-400"
+                onClick={() => handleRevoke(k.key_id)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── API Documentation Section ────────────────────────────────────
+
+const ENDPOINTS = [
+  {
+    method: "POST",
+    path: "/api/r1a/v1/chat/completions",
+    description: "Chat with your R1 (OpenAI-compatible)",
+    curl: `curl ${API_BASE_URL}/api/r1a/v1/chat/completions \\
+  -H "Authorization: Bearer boondit_r1_..." \\
+  -H "Content-Type: application/json" \\
+  -d '{"model":"r1-command","messages":[{"role":"user","content":"Hello"}]}'`,
+  },
+  {
+    method: "GET",
+    path: "/api/r1a/v1/models",
+    description: "List available models",
+    curl: `curl ${API_BASE_URL}/api/r1a/v1/models \\
+  -H "Authorization: Bearer boondit_r1_..."`,
+  },
+  {
+    method: "POST",
+    path: "/api/r1a/v1/audio/speech",
+    description: "Text to speech via your R1",
+    curl: `curl ${API_BASE_URL}/api/r1a/v1/audio/speech \\
+  -H "Authorization: Bearer boondit_r1_..." \\
+  -H "Content-Type: application/json" \\
+  -d '{"input":"Hello world","voice":"alloy"}'`,
+  },
+  {
+    method: "GET",
+    path: "/api/r1a/health",
+    description: "Server health check (no auth required)",
+    curl: `curl ${API_BASE_URL}/api/r1a/health`,
+  },
+];
+
+function ApiDocsSection() {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="rounded-xl border bg-card overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between p-6 text-left hover:bg-muted/20 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+            <Code className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold">API Documentation</h3>
+            <p className="text-xs text-muted-foreground">
+              OpenAI-compatible endpoints for your R1
+            </p>
+          </div>
+        </div>
+        <ChevronDown
+          className={`h-4 w-4 text-muted-foreground transition-transform ${
+            expanded ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+
+      {expanded && (
+        <div className="border-t px-6 py-4 space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Base URL:{" "}
+            <code className="font-mono text-xs">{API_BASE_URL}</code>
+          </p>
+
+          <div className="space-y-4">
+            {ENDPOINTS.map((ep) => (
+              <div key={ep.method + ep.path} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Badge
+                    variant="secondary"
+                    className="font-mono text-xs font-semibold"
+                  >
+                    {ep.method}
+                  </Badge>
+                  <code className="font-mono text-xs">{ep.path}</code>
+                </div>
+                <p className="text-xs text-muted-foreground">{ep.description}</p>
+                <pre className="rounded-md border bg-muted/40 p-3 overflow-x-auto text-xs font-mono">
+                  {ep.curl}
+                </pre>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────
 
 function ServiceRow({
   name,
@@ -175,4 +753,18 @@ function ServiceRow({
       )}
     </div>
   );
+}
+
+function formatRelativeTime(iso: string): string {
+  const date = new Date(iso);
+  const now = Date.now();
+  const diffMs = now - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 30) return `${diffDay}d ago`;
+  return date.toLocaleDateString();
 }

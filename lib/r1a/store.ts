@@ -45,7 +45,7 @@ export interface AuthResult {
   error?: string;
   apiKeyHash?: string;
   userId?: string;
-  linkId?: string;
+  deviceId?: string;
 }
 
 export async function authenticateApiKey(
@@ -69,9 +69,9 @@ export async function authenticateApiKey(
   const supabase = createAdminClient();
   const { data: keyRecord, error } = await supabase
     .from('api_keys')
-    .select('user_id, link_id, revoked_at')
+    .select('user_id, device_id, name')
     .eq('key_hash', apiKeyHash)
-    .is('revoked_at', null)
+    .eq('is_active', true)
     .single();
 
   if (error || !keyRecord) {
@@ -82,7 +82,7 @@ export async function authenticateApiKey(
     authenticated: true,
     apiKeyHash,
     userId: keyRecord.user_id,
-    linkId: keyRecord.link_id,
+    deviceId: keyRecord.device_id,
   };
 }
 

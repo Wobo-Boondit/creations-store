@@ -20,10 +20,10 @@ export async function POST(request: NextRequest) {
 
   // Verify the creation exists
   const { data: creation, error: creationError } = await supabase
-    .from('creations')
+    .from('creation_clients')
     .select('client_id, name')
     .eq('client_id', clientId)
-    .eq('is_active', true)
+    .eq('status', 'active')
     .single();
 
   if (creationError || !creation) {
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
   // Check if already linked
   const { data: existingLink } = await supabase
-    .from('device_links')
+    .from('creation_links')
     .select('id')
     .eq('user_id', user.id)
     .eq('client_id', clientId)
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
   // Create device link directly (no QR/pair code needed)
   const deviceId = randomBytes(8).toString('hex');
   const { data: link, error: linkError } = await supabase
-    .from('device_links')
+    .from('creation_links')
     .insert({
       user_id: user.id,
       client_id: clientId,
