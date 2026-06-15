@@ -11,20 +11,32 @@ interface LogEntry {
 
 export default function R1AClientPage() {
   const [apiKey, setApiKey] = useState('');
+  const [pairToken, setPairToken] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [pairing, setPairing] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [statusText, setStatusText] = useState('Enter your API key');
   const socketRef = useRef<Socket | null>(null);
   const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
-  // Load saved API key on mount
+  // Load saved API key or pair token on mount
   useEffect(() => {
+    // Check for pairing token in URL (?pair=xxx)
+    const params = new URLSearchParams(window.location.search);
+    const pair = params.get('pair');
+    if (pair) {
+      setPairToken(pair);
+      setStatusText('Pairing device...');
+      pairDevice(pair);
+      return;
+    }
+
+    // Otherwise try saved API key
     const saved = localStorage.getItem('boondit_r1_api_key');
     if (saved) {
       setApiKey(saved);
-      // Auto-connect if key found
       connect(saved);
     }
   }, []);
@@ -225,6 +237,60 @@ export default function R1AClientPage() {
     setStatusText('Disconnected');
   }, []);
 
+  // ─── Pairing via QR token ──────────────────────────────────────
+  const pairDevice = useCallback((token: string) => {
+    setPairing(true);
+    addLog('Connecting with pairing token...');
+
+    const socket = io({
+      path: '/socket.io/',
+      transports: ['polling'],
+      timeout: 10000,
+      reconnection: false,
+      auth: { pairToken: token },
+    });
+
+    socketRef.current = socket;
+
+    socket.on('paired', (data: any) => {
+      addLog('Device paired successfully!');
+      setStatusText('Paired');
+      setPairing(false);
+
+      // Save the API key the server generated
+      if (data.apiKey) {
+        localStorage.setItem('boondit_r1_api_key', data.apiKey);
+        setApiKey(data.apiKey);
+        setPairToken(null);
+        addLog('API key received and saved');
+
+        // Reconnect with the real API key
+        socket.disconnect();
+        setTimeout(() => connect(data.apiKey), 500);
+      }
+
+      // Clean URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete('pair');
+      window.history.replaceState({}, '', url.toString());
+    });
+
+    socket.on('error', (data: any) => {
+      if (data.type === 'pair_error') {
+        addLog(`Pairing failed: ${data.message}`, 'error');
+        setStatusText(`Pairing failed: ${data.message}`);
+        setPairing(false);
+        setPairToken(null);
+      }
+    });
+
+    socket.on('connect_error', (error: Error) => {
+      addLog(`Connection error: ${error.message}`, 'error');
+      setPairing(false);
+      setStatusText(`Error: ${error.message}`);
+    });
+  }, [addLog, connect]);
+
   const handleClearKey = useCallback(() => {
     localStorage.removeItem('boondit_r1_api_key');
     setApiKey('');
@@ -250,14 +316,32 @@ export default function R1AClientPage() {
         </h1>
         <div style={{ fontSize: '0.85rem', opacity: 0.7 }}>
           Status: <span style={{
-            color: connected ? '#4ade80' : connecting ? '#fbbf24' : '#f87171',
+            color: connected ? '#4ade80' : connecting || pairing ? '#fbbf24' : '#f87171',
           }}>
-            {connecting ? 'Connecting...' : statusText}
+            {pairing ? 'Pairing...' : connecting ? 'Connecting...' : statusText}
           </span>
         </div>
       </div>
 
-      {!connected && (
+      {pairing && (
+        <div style={{
+          marginBottom: '20px',
+          padding: '16px',
+          background: '#1a1a1a',
+          border: '1px solid #FE5F00',
+          borderRadius: '4px',
+          textAlign: 'center',
+        }}>
+          <p style={{ fontSize: '0.9rem', color: '#FE5F00', margin: 0 }}>
+            Pairing device to your account...
+          </p>
+          <p style={{ fontSize: '0.75rem', opacity: 0.6, marginTop: '8px' }}>
+            Keep this page open
+          </p>
+        </div>
+      )}
+
+      {!connected && !pairing && (
         <div style={{ marginBottom: '20px' }}>
           <input
             type="text"

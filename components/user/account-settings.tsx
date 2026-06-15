@@ -11,7 +11,7 @@ import {
   Check,
   LogOut,
   Smartphone,
-  Link2,
+
   Unlink,
   Key,
   Plus,
@@ -21,8 +21,13 @@ import {
   Code,
   ChevronDown,
   AlertTriangle,
+  QrCode,
+  RefreshCw,
+  Camera,
 } from "lucide-react";
 import { toast } from "sonner";
+import { QRCodeSVG } from "qrcode.react";
+import { createBrowserClient } from "@/lib/supabase/client";
 import type { CurrentUser } from "@/lib/auth";
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -178,7 +183,7 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
       </div>
 
       {/* ─── R1A Sections ─────────────────────────────────────── */}
-      <R1ADeviceSection />
+      <R1ADeviceSection userId={user.id} />
       <ApiKeysSection />
       <ApiDocsSection />
       {/* ─── End R1A Sections ─────────────────────────────────── */}
@@ -224,11 +229,17 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
 
 // ─── R1A Device Section ───────────────────────────────────────────
 
-function R1ADeviceSection() {
+type PairStep = "idle" | "scanning" | "linked";
+
+function R1ADeviceSection({ userId }: { userId: string }) {
   const [r1aCreation, setR1aCreation] = useState<Creation | null>(null);
   const [stats, setStats] = useState<R1AStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [linking, setLinking] = useState(false);
+  const [pairStep, setPairStep] = useState<PairStep>("idle");
+  const [pairToken, setPairToken] = useState<string | null>(null);
+  const [pairExpiresAt, setPairExpiresAt] = useState<number>(0);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   const loadData = async () => {
@@ -242,7 +253,6 @@ function R1ADeviceSection() {
     } catch {
       // ignore
     }
-    // Stats are best-effort
     fetch("/api/r1a/stats")
       .then((r) => (r.ok ? r.json() : null))
       .then((s) => {
@@ -256,28 +266,79 @@ function R1ADeviceSection() {
     loadData();
   }, []);
 
-  const link = r1aCreation?.links?.[0] || null;
+  // Realtime: detect when device gets linked while showing QR
+  useEffect(() => {
+    if (pairStep !== "scanning") return;
+    const sb = createBrowserClient();
+    const channel = sb
+      .channel(`r1a-pair:${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "creation_links",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const row = payload.new as { client_id: string; is_active: boolean };
+          if (row.client_id === "r1a" && row.is_active) {
+            setPairStep("linked");
+            toast.success("R1A device linked");
+            loadData();
+          }
+        },
+      )
+      .subscribe();
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }, [pairStep, userId]);
 
-  const handleLink = () => {
-    setLinking(true);
-    startTransition(async () => {
-      const res = await fetch("/api/oauth/direct-link", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clientId: "r1a" }),
-      });
-      setLinking(false);
-      if (res.ok) {
-        toast.success("R1A linked to your account");
-        loadData();
-      } else {
-        const d = await res.json().catch(() => ({}));
-        toast.error(d.error || "Failed to link R1A");
-      }
-    });
+  const fetchPairToken = async () => {
+    setError(null);
+    const res = await fetch("/api/r1a/pair-token", { method: "POST" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      setError(d.error || "Failed to create pairing token");
+      return null;
+    }
+    const data = await res.json();
+    return data.token as string;
   };
 
+  const startPairing = async () => {
+    const token = await fetchPairToken();
+    if (!token) return;
+    setPairToken(token);
+    setPairExpiresAt(Date.now() + 300 * 1000);
+    setPairStep("scanning");
+  };
+
+  // Countdown + auto-refresh
+  useEffect(() => {
+    if (pairStep !== "scanning" || !pairToken) return;
+    const tick = () => {
+      const ms = pairExpiresAt - Date.now();
+      const s = Math.max(0, Math.floor(ms / 1000));
+      setSecondsLeft(s);
+      if (s === 0) {
+        // Auto-refresh token
+        fetchPairToken().then((t) => {
+          if (t) {
+            setPairToken(t);
+            setPairExpiresAt(Date.now() + 300 * 1000);
+          }
+        });
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [pairStep, pairToken, pairExpiresAt]);
+
   const handleUnlink = () => {
+    const link = r1aCreation?.links?.[0];
     if (!link || !r1aCreation) return;
     if (!confirm("Unlink your R1A device? You can re-link at any time.")) return;
     startTransition(async () => {
@@ -288,14 +349,86 @@ function R1ADeviceSection() {
       if (res.ok) {
         toast.success("R1A device unlinked");
         loadData();
+        setPairStep("idle");
       } else {
         toast.error("Failed to unlink");
       }
     });
   };
 
+  const link = r1aCreation?.links?.[0] || null;
   const online = stats?.deviceOnline === true;
 
+  // ─── Pairing QR view ──────────────────────────────────────────
+  if (pairStep === "scanning" && pairToken) {
+    const qrPayload = JSON.stringify({
+      v: 1,
+      token: pairToken,
+      endpoint: `${API_BASE_URL}/r1a_client`,
+    });
+    const mins = Math.floor(secondsLeft / 60);
+    const secs = String(secondsLeft % 60).padStart(2, "0");
+    return (
+      <div className="rounded-xl border bg-card p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+            <Camera className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold">Scan with R1</h3>
+            <p className="text-xs text-muted-foreground">
+              Open the R1 camera and scan this code
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-col items-center gap-3 py-4">
+          <div className="rounded-lg border p-4 bg-white">
+            <QRCodeSVG value={qrPayload} size={256} marginSize={1} />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Waiting for device &middot; {mins}:{secs}
+          </p>
+          {error && (
+            <p className="text-sm text-destructive">{error}</p>
+          )}
+          <button
+            onClick={() => {
+              setPairStep("idle");
+              setPairToken(null);
+            }}
+            className="text-xs text-muted-foreground hover:underline mt-2"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Just linked confirmation ─────────────────────────────────
+  if (pairStep === "linked") {
+    return (
+      <div className="rounded-xl border bg-card p-6 space-y-4">
+        <div className="flex flex-col items-center gap-3 py-6 text-center">
+          <div className="h-12 w-12 rounded-full bg-green-500/10 flex items-center justify-center">
+            <Check className="h-6 w-6 text-green-500" />
+          </div>
+          <h3 className="font-semibold text-lg">Device Linked</h3>
+          <p className="text-sm text-muted-foreground">
+            Your R1 is now connected. Generate an API key below to start using it.
+          </p>
+          <Button
+            onClick={() => setPairStep("idle")}
+            size="sm"
+          >
+            Done
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Default view (idle / linked / loading) ───────────────────
   return (
     <div className="rounded-xl border bg-card p-6 space-y-4">
       <div className="flex items-center justify-between">
@@ -381,20 +514,11 @@ function R1ADeviceSection() {
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
             Link your R1A device to generate API keys and control your R1
-            remotely. No QR code required.
+            remotely. Scan a QR code with your R1 camera to pair.
           </p>
-          <Button onClick={handleLink} disabled={linking} size="sm">
-            {linking ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Linking...
-              </>
-            ) : (
-              <>
-                <Link2 className="h-4 w-4 mr-2" />
-                Link R1A
-              </>
-            )}
+          <Button onClick={startPairing} size="sm">
+            <QrCode className="h-4 w-4 mr-2" />
+            Pair R1A
           </Button>
         </div>
       )}
