@@ -364,7 +364,7 @@ function R1ADeviceSection({ userId }: { userId: string }) {
     const qrPayload = JSON.stringify({
       v: 1,
       token: pairToken,
-      endpoint: `${API_BASE_URL}/r1a_client`,
+      endpoint: `${API_BASE_URL}/api/r1a/link`,
     });
     const mins = Math.floor(secondsLeft / 60);
     const secs = String(secondsLeft % 60).padStart(2, "0");

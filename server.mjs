@@ -3,7 +3,7 @@ import { parse } from 'url';
 import next from 'next';
 import { Server } from 'socket.io';
 import { createClient } from '@supabase/supabase-js';
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = '0.0.0.0';
@@ -62,40 +62,6 @@ function generateRequestId() {
   return `req-${Date.now()}-${randomBytes(4).toString('hex')}`;
 }
 
-// ─── R1A Pairing Token (must mirror lib/r1a/pair-token.ts) ───────
-const PAIR_PREFIX = 'r1pair';
-
-function verifyPairToken(token) {
-  if (!token || !token.startsWith(PAIR_PREFIX + '.')) return null;
-  const rest = token.slice(PAIR_PREFIX.length + 1);
-  const lastDot = rest.lastIndexOf('.');
-  if (lastDot === -1) return null;
-
-  const encoded = rest.slice(0, lastDot);
-  const sig = rest.slice(lastDot + 1);
-  const secret = process.env.PLATFORM_SIGNING_SECRET || '';
-  const expectedSig = createHmac('sha256', secret).update(encoded).digest('base64url');
-
-  const a = Buffer.from(sig);
-  const b = Buffer.from(expectedSig);
-  if (a.length !== b.length) return null;
-  try {
-    if (!timingSafeEqual(a, b)) return null;
-  } catch {
-    return null;
-  }
-
-  try {
-    const decoded = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
-    if (decoded.type !== 'r1pair') return null;
-    if (!decoded.exp || Date.now() / 1000 > decoded.exp) return null;
-    if (!decoded.userId || !decoded.clientId) return null;
-    return { userId: decoded.userId, clientId: decoded.clientId };
-  } catch {
-    return null;
-  }
-}
-
 // ─── API Key Generation (must mirror lib/auth/api-key.ts) ────────
 function generateApiKey() {
   const random = randomBytes(24).toString('base64url');
@@ -106,90 +72,10 @@ function generateApiKey() {
   return { keyId, plaintext, hash, preview };
 }
 
-// ─── Pairing Handler ────────────────────────────────────────────
-// A device connects with auth.pairToken (from a scanned QR). We verify the
-// signed token, create the creation_link + an API key, and hand the API key
-// back so the device can reconnect as a normal authenticated client.
-async function handlePairing(socket, pairToken) {
-  const pair = verifyPairToken(pairToken);
-  if (!pair) {
-    socket.emit('error', {
-      type: 'pair_error',
-      message: 'Invalid or expired pairing token',
-    });
-    socket.disconnect(true);
-    return;
-  }
-
-  const deviceId = randomBytes(8).toString('hex');
-  const nowIso = new Date().toISOString();
-
-  // Create / reactivate the device link
-  const { error: linkErr } = await supabase
-    .from('creation_links')
-    .upsert(
-      {
-        user_id: pair.userId,
-        client_id: pair.clientId,
-        device_id: deviceId,
-        device_name: 'R1A Device',
-        is_active: true,
-        linked_at: nowIso,
-        last_seen: nowIso,
-      },
-      { onConflict: 'user_id,client_id,device_id' }
-    );
-
-  // Issue a fresh API key for the newly linked device
-  const newKey = generateApiKey();
-  const { error: keyErr } = await supabase.from('api_keys').insert({
-    key_id: newKey.keyId,
-    key_hash: newKey.hash,
-    key_preview: newKey.preview,
-    user_id: pair.userId,
-    device_id: deviceId,
-    name: 'R1A',
-    is_active: true,
-    created_at: nowIso,
-  });
-
-  if (linkErr || keyErr) {
-    console.error('[R1A] Pairing DB error:', linkErr || keyErr);
-    socket.emit('error', {
-      type: 'pair_error',
-      message: 'Failed to create device link',
-    });
-    socket.disconnect(true);
-    return;
-  }
-
-  console.log(
-    `[R1A] Device paired for user ${pair.userId.substring(0, 8)}... (device ${deviceId})`
-  );
-
-  // The DB write triggers Supabase Realtime on creation_links, which the
-  // settings page subscribes to — so the web UI flips to "Linked" on its own.
-  socket.emit('paired', {
-    message: 'Device linked successfully',
-    apiKey: newKey.plaintext,
-    deviceId,
-    timestamp: nowIso,
-  });
-}
-
 // ─── Socket.IO Connection Handler ──────────────────────────────
 
 io.on('connection', (socket) => {
   const auth = socket.handshake.auth || {};
-
-  // ─── Pairing flow: device connects with a signed pair token ────
-  // The R1 loaded /r1a_client?pair=<token> and connects using
-  // auth.pairToken instead of an API key. We verify + create the link,
-  // then hand back an API key so the device can reconnect normally.
-  if (auth.pairToken) {
-    handlePairing(socket, auth.pairToken);
-    return;
-  }
 
   const apiKey = auth.apiKey;
 
