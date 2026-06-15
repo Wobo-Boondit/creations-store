@@ -16,7 +16,7 @@ export default async function SettingsPage() {
   return (
     <div className="flex min-h-screen flex-1 flex-col">
       <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl p-8">
+        <div className="mx-auto max-w-3xl p-8">
           <Link
             href="/dashboard"
             className="mb-6 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
