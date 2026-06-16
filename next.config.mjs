@@ -22,7 +22,7 @@ const CSP = [
   "object-src 'none'",
   "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://cdn.boondit.site https://*.linodeobjects.com",
+  "img-src 'self' data: blob: https://cdn.boondit.site https://*.linodeobjects.com https://cdn.discordapp.com",
   "media-src 'self' blob: https://cdn.boondit.site https://*.linodeobjects.com",
   "font-src 'self' data:",
   `connect-src 'self' ${SUPABASE_ORIGIN} ${SUPABASE_WSS_ORIGIN} https://cdn.boondit.site https://*.linodeobjects.com https://cloudflareinsights.com`,
