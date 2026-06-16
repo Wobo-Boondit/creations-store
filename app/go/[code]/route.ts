@@ -91,6 +91,24 @@ export async function GET(request: NextRequest, context: RouteContext) {
     clicked_at: new Date().toISOString(),
   });
 
+  // Record install — QR scan IS the install on R1
+  // De-duplicate per session so refreshing doesn't inflate numbers
+  const { data: existingInstall } = await supabase
+    .from("store_installs")
+    .select("id")
+    .eq("creation_id", creation.id)
+    .eq("session_id", sessionId)
+    .maybeSingle();
+
+  if (!existingInstall) {
+    await supabase.from("store_installs").insert({
+      creation_id: creation.id,
+      session_id: sessionId,
+      user_agent: userAgent,
+      installed_at: new Date().toISOString(),
+    });
+  }
+
   // Validate URL scheme before redirect (prevent open redirect / javascript:)
   try {
     const targetUrl = new URL(creation.url);
