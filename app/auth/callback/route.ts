@@ -61,9 +61,9 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
-      return NextResponse.redirect(
-        new URL(`/auth/signin?error=${encodeURIComponent("auth_failed")}`, origin)
-      );
+      const signinUrl = new URL("/auth/signin", origin);
+      signinUrl.searchParams.set("error", "auth_failed");
+      return NextResponse.redirect(signinUrl);
     }
   }
 
