@@ -1,235 +1,227 @@
 import { notFound, redirect } from "next/navigation";
-import { getCreationById, getUserById } from "@/lib/data";
+import { getCreationById } from "@/lib/data";
 import {
   getCreationAnalytics,
   getCreationDailyStats,
-  getTopReferrers,
-  getDeviceBreakdown,
 } from "@/lib/analytics";
 import { getCurrentUser } from "@/lib/auth";
-import { Section, Container } from "@/components/craft";
-import { Button } from "@/components/ui/button";
+import { StarRating } from "@/components/star-rating";
 import Link from "next/link";
 import {
-  MousePointerClick,
-  Users,
   Download,
+  Eye,
+  Users,
   TrendingUp,
   ArrowLeft,
-  Calendar,
-  Monitor,
-  Globe,
+  Star,
 } from "lucide-react";
+import { directory } from "@/directory.config";
 
 interface AnalyticsPageProps {
   params: Promise<{ creationId: string }>;
 }
 
+export const dynamic = "force-dynamic";
+
 export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
   const { creationId } = await params;
   const id = creationId;
 
-  // Get current user
   const user = await getCurrentUser();
-
-  // Get creation
   const creation = await getCreationById(id);
 
-  if (!creation) {
-    notFound();
-  }
+  if (!creation) notFound();
 
-  // Check if user is the owner
   if (!user || user.id !== creation.userId) {
-    redirect(`/creation/${id}`);
+    redirect(`/${id}`);
   }
 
-  // Get analytics data
-  const analytics = await getCreationAnalytics(id);
-  const dailyStats = await getCreationDailyStats(id, 30);
-  const topReferrers = await getTopReferrers(id, 10);
-  const deviceBreakdown = await getDeviceBreakdown(id);
+  const [analytics, dailyStats] = await Promise.all([
+    getCreationAnalytics(id),
+    getCreationDailyStats(id, 30),
+  ]);
+
+  // Build simple sparkline data (last 14 days of installs)
+  const sparkData = dailyStats
+    .slice(0, 14)
+    .reverse()
+    .map((s) => s.installs);
+  const maxSpark = Math.max(...sparkData, 1);
+  const totalRatingCount = creation.averageRating?.count || 0;
+  const avgRating = creation.averageRating?.average || 0;
 
   return (
-    <Section>
-      <Container>
-        <div className="mx-auto max-w-6xl space-y-8">
-          {/* Header */}
-          <div className="flex items-center justify-between">
+    <div className="flex min-h-screen flex-1 flex-col">
+      <div className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-4xl p-6 md:p-8 space-y-8">
+          {/* Back link */}
+          <Link
+            href={`/${id}`}
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to {creation.title}
+          </Link>
+
+          {/* Creation header */}
+          <div className="flex items-center gap-4">
+            {creation.iconUrl || creation.favicon ? (
+              <img
+                src={creation.iconUrl || creation.favicon || ""}
+                alt={creation.title}
+                className="h-16 w-16 rounded-2xl border"
+              />
+            ) : (
+              <div
+                className="h-16 w-16 rounded-2xl border bg-muted flex items-center justify-center text-2xl font-bold"
+                style={creation.themeColor ? { color: creation.themeColor } : undefined}
+              >
+                {creation.title[0]?.toUpperCase()}
+              </div>
+            )}
             <div>
-              <Button variant="ghost" size="sm" className="gap-2 mb-4" asChild>
-                <Link href={`/${id}`}>
-                  <ArrowLeft className="h-4 w-4" />
-                  Back to Creation
-                </Link>
-              </Button>
-              <h1 className="text-3xl font-bold tracking-tight">
-                Analytics for {creation.title}
-              </h1>
-              <p className="text-muted-foreground">
-                Track how users discover and install your creation
-              </p>
+              <h1 className="text-2xl font-bold">{creation.title}</h1>
+              {creation.author && (
+                <p className="text-sm text-muted-foreground">by {creation.author}</p>
+              )}
             </div>
           </div>
 
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatsCard
-              title="Total Clicks"
-              value={analytics.totalClicks.toLocaleString()}
-              icon={<MousePointerClick className="h-5 w-5" />}
-              subtitle={`${analytics.uniqueClicks.toLocaleString()} unique visitors`}
-              color="blue"
-            />
-            <StatsCard
-              title="Total Installs"
-              value={analytics.totalInstalls.toLocaleString()}
+          {/* Big stats row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <BigStat
               icon={<Download className="h-5 w-5" />}
-              subtitle={`${analytics.installRate}% install rate`}
-              color="green"
+              label="Installs"
+              value={analytics.totalInstalls}
+              accent="primary"
             />
-            <StatsCard
-              title="7-Day Retention"
-              value={`${analytics.retention7Day}%`}
+            <BigStat
+              icon={<Eye className="h-5 w-5" />}
+              label="Views"
+              value={analytics.totalClicks}
+              accent="blue"
+            />
+            <BigStat
+              icon={<Users className="h-5 w-5" />}
+              label="Active (7d)"
+              value={analytics.activeUsers7Day}
+              accent="green"
+            />
+            <BigStat
               icon={<TrendingUp className="h-5 w-5" />}
-              subtitle={`${analytics.activeUsers7Day} active users`}
-              color="purple"
-            />
-            <StatsCard
-              title="Avg Daily Clicks"
-              value={analytics.avgDailyClicks.toFixed(1)}
-              icon={<Calendar className="h-5 w-5" />}
-              subtitle={`${analytics.avgDailyInstalls.toFixed(1)} installs/day`}
-              color="orange"
+              label="Install Rate"
+              value={`${analytics.installRate}%`}
+              accent="purple"
             />
           </div>
 
-          {/* 30-Day Stats */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Daily Trend */}
-            <div className="bg-card rounded-2xl border-2 border-border p-6">
-              <h2 className="text-xl font-semibold mb-4">30-Day Trend</h2>
-              <div className="space-y-2">
-                {dailyStats.slice(0, 10).map((stat) => (
-                  <div key={stat.date} className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">{stat.date}</span>
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-1">
-                        <MousePointerClick className="h-3 w-3 text-blue-500" />
-                        <span className="text-sm font-medium">{stat.clicks}</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Download className="h-3 w-3 text-green-500" />
-                        <span className="text-sm font-medium">{stat.installs}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Device Breakdown */}
-            <div className="bg-card rounded-2xl border-2 border-border p-6">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <Monitor className="h-5 w-5" />
-                Device Breakdown
-              </h2>
-              <div className="space-y-3">
-                {deviceBreakdown.slice(0, 6).map((device) => (
-                  <div key={device.device} className="space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium">{device.device}</span>
-                      <span className="text-muted-foreground">
-                        {device.clicks} clicks ({device.percentage.toFixed(1)}%)
-                      </span>
-                    </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary rounded-full"
-                        style={{ width: `${device.percentage}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Top Referrers */}
-          <div className="bg-card rounded-2xl border-2 border-border p-6">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-              <Globe className="h-5 w-5" />
-              Top Referrers
+          {/* Install trend */}
+          <div className="rounded-xl border bg-card p-6">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-4">
+              Installs (last 14 days)
             </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {topReferrers.slice(0, 9).map((referrer) => (
-                <div
-                  key={referrer.referrer}
-                  className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
-                >
-                  <span className="text-sm font-medium truncate" title={referrer.referrer}>
-                    {referrer.referrer === "Direct"
-                      ? "Direct Traffic"
-                      : referrer.referrer.replace(/^https?:\/\//, "").split("/")[0]}
-                  </span>
-                  <span className="text-sm text-muted-foreground">
-                    {referrer.clicks} ({referrer.percentage.toFixed(1)}%)
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Proxy URL Info */}
-          <div className="bg-muted/50 rounded-2xl border-2 border-border p-6">
-            <h2 className="text-xl font-semibold mb-2">Proxy URL Tracking</h2>
-            <p className="text-muted-foreground mb-4">
-              Your QR codes use a proxy URL to track installs. This allows you to see
-              detailed analytics while also enabling better moderation.
-            </p>
-            {creation.proxyCode && (
-              <div className="flex items-center gap-2">
-                <code className="px-3 py-1 bg-background rounded-lg text-sm">
-                  /go/{creation.proxyCode}
-                </code>
-                <span className="text-sm text-muted-foreground">
-                  → {creation.url}
-                </span>
+            {sparkData.every((v) => v === 0) ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">
+                No installs yet. Share your creation to get started.
+              </p>
+            ) : (
+              <div className="flex items-end gap-1 h-32">
+                {sparkData.map((val, i) => (
+                  <div
+                    key={i}
+                    className="flex-1 bg-primary/80 hover:bg-primary transition-colors rounded-t-sm group relative"
+                    style={{
+                      height: `${Math.max((val / maxSpark) * 100, val > 0 ? 8 : 0)}%`,
+                      minHeight: val > 0 ? "4px" : "0",
+                    }}
+                  >
+                    {val > 0 && (
+                      <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-medium text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                        {val}
+                      </span>
+                    )}
+                  </div>
+                ))}
               </div>
             )}
           </div>
+
+          {/* Rating summary */}
+          {totalRatingCount > 0 && (
+            <div className="rounded-xl border bg-card p-6">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-4">
+                Rating
+              </h2>
+              <div className="flex items-center gap-6">
+                <div>
+                  <p className="text-4xl font-bold">{avgRating.toFixed(1)}</p>
+                  <StarRating rating={avgRating} count={totalRatingCount} size="sm" />
+                </div>
+                <div className="flex-1 space-y-1.5">
+                  {[5, 4, 3, 2, 1].map((star) => {
+                    const pct = totalRatingCount > 0 ? (Math.round(avgRating) === star ? 100 : 0) : 0;
+                    return (
+                      <div key={star} className="flex items-center gap-2 text-xs">
+                        <span className="w-3 text-muted-foreground">{star}</span>
+                        <Star className="h-3 w-3 text-muted-foreground fill-muted-foreground" />
+                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Proxy info */}
+          {creation.proxyCode && (
+            <div className="rounded-xl border bg-muted/30 p-6">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                Install Link
+              </h2>
+              <div className="flex items-center gap-2">
+                <code className="px-3 py-1 bg-background rounded-lg text-sm border">
+                  {directory.baseUrl}/go/{creation.proxyCode}
+                </code>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Share this link or QR code. Each scan counts as an install.
+              </p>
+            </div>
+          )}
         </div>
-      </Container>
-    </Section>
+      </div>
+    </div>
   );
 }
 
-interface StatsCardProps {
-  title: string;
-  value: string | number;
-  subtitle: string;
+interface BigStatProps {
   icon: React.ReactNode;
-  color: "blue" | "green" | "purple" | "orange";
+  label: string;
+  value: string | number;
+  accent: "primary" | "blue" | "green" | "purple";
 }
 
-function StatsCard({ title, value, subtitle, icon, color }: StatsCardProps) {
-  const colorClasses = {
-    blue: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-    green: "bg-green-500/10 text-green-500 border-green-500/20",
-    purple: "bg-purple-500/10 text-purple-500 border-purple-500/20",
-    orange: "bg-orange-500/10 text-orange-500 border-orange-500/20",
+function BigStat({ icon, label, value, accent }: BigStatProps) {
+  const accents = {
+    primary: "text-primary",
+    blue: "text-blue-500",
+    green: "text-green-500",
+    purple: "text-purple-500",
   };
 
   return (
-    <div className="bg-card rounded-2xl border-2 border-border p-6">
-      <div className="flex items-center gap-3 mb-3">
-        <div className={`p-2 rounded-lg border ${colorClasses[color]}`}>
-          {icon}
-        </div>
-        <h3 className="font-medium text-muted-foreground">{title}</h3>
+    <div className="rounded-xl border bg-card p-4">
+      <div className={`flex items-center gap-2 mb-2 ${accents[accent]}`}>
+        {icon}
+        <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
       </div>
-      <p className="text-3xl font-bold mb-1">{value}</p>
-      <p className="text-sm text-muted-foreground">{subtitle}</p>
+      <p className="text-2xl font-bold">{typeof value === "number" ? value.toLocaleString() : value}</p>
     </div>
   );
 }
