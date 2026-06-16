@@ -23,6 +23,7 @@ import { StarRating } from "@/components/star-rating";
 import { Metadata, ResolvingMetadata } from "next";
 import Markdown from "react-markdown";
 import { getCurrentUser } from "@/lib/auth";
+import { directory } from "@/directory.config";
 
 // UUID regex to extract ID from "{uuid}-{slug}" format
 const UUID_RE = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
@@ -59,26 +60,30 @@ export async function generateMetadata(
 
   const previousImages = (await parent).openGraph?.images || [];
 
+  const detailUrl = `${directory.baseUrl}/${bookmark.id}-${bookmark.slug}`;
+  const bestImage = bookmark.ogImage || bookmark.iconUrl || bookmark.screenshotUrl || bookmark.favicon;
+
   return {
-    title: `${bookmark.title} | Directory`,
+    title: `${bookmark.title} | ${directory.name}`,
     description:
       bookmark.description ||
       bookmark.overview ||
-      `Boondit creations store entry for ${bookmark.title}`,
+      `Discover ${bookmark.title} on ${directory.name}`,
     openGraph: {
       title: bookmark.title,
-      description: bookmark.description || bookmark.overview || undefined,
-      url: bookmark.url,
-      images: [
-        ...(bookmark.ogImage ? [bookmark.ogImage] : []),
-        ...previousImages,
-      ],
+      description: bookmark.description || bookmark.overview || `Discover ${bookmark.title} on ${directory.name}`,
+      url: detailUrl,
+      siteName: directory.name,
+      type: "article",
+      images: bestImage
+        ? [{ url: bestImage, width: 1200, height: 630, alt: bookmark.title }]
+        : previousImages,
     },
     twitter: {
       card: "summary_large_image",
       title: bookmark.title,
       description: bookmark.description || bookmark.overview || undefined,
-      images: bookmark.ogImage ? [bookmark.ogImage] : [],
+      images: bestImage ? [bestImage] : [],
     },
   };
 }
