@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 // Database Imports
 import { getCreationBySlug, getCreationById, incrementCreationViews, getCreationReviews } from "@/lib/data";
+import { recordDetailClick } from "@/lib/analytics";
 
 // Component Imports
 import { Section, Container } from "@/components/craft";
@@ -122,6 +123,11 @@ export default async function Page({ params }: Props) {
 
   // Increment views in the background with rate limiting
   incrementCreationViews(bookmark.id, viewSessionId).catch(console.error);
+
+  // Record a click event for analytics (so clicks are tracked on detail page visits too)
+  const clickReferrer = headersList.get('referer') || null;
+  const clickUserAgent = headersList.get('user-agent') || undefined;
+  recordDetailClick(bookmark.id, viewSessionId, clickUserAgent, clickReferrer).catch(console.error);
 
   // Get the full URL for sharing
   const host = headersList.get('host') || '';

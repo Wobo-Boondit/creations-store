@@ -58,7 +58,7 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
           <div className="flex items-center justify-between">
             <div>
               <Button variant="ghost" size="sm" className="gap-2 mb-4" asChild>
-                <Link href={`/creation/${id}`}>
+                <Link href={`/${id}`}>
                   <ArrowLeft className="h-4 w-4" />
                   Back to Creation
                 </Link>

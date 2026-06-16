@@ -63,10 +63,14 @@ export async function getCreationAnalytics(creationId: string): Promise<Creation
   const thirtyDaysAgoMs = now - 30 * 24 * 60 * 60 * 1000;
 
   // Fetch all clicks for the creation
-  const { data: clicks } = await supabase
+  const { data: clicks, error: clicksErr } = await supabase
     .from("store_clicks")
     .select("session_id, user_agent, clicked_at")
     .eq("creation_id", id);
+
+  if (clicksErr) {
+    console.error("[analytics] getCreationAnalytics: store_clicks query failed:", clicksErr.message);
+  }
 
   const clickRows = clicks || [];
   const totalClicks = clickRows.length;
@@ -74,21 +78,29 @@ export async function getCreationAnalytics(creationId: string): Promise<Creation
   const uniqueClicks = uniqueSessions.size;
 
   // Fetch installs
-  const { count: totalInstalls } = await supabase
+  const { count: totalInstalls, error: installsErr } = await supabase
     .from("store_installs")
     .select("*", { count: "exact", head: true })
     .eq("creation_id", id);
+
+  if (installsErr) {
+    console.error("[analytics] getCreationAnalytics: store_installs query failed:", installsErr.message);
+  }
 
   const installs = totalInstalls || 0;
   const installRate = totalClicks > 0 ? (installs / totalClicks) * 100 : 0;
 
   // Daily stats for averages
-  const { data: dailyStatsRows } = await supabase
+  const { data: dailyStatsRows, error: dailyErr } = await supabase
     .from("store_daily_stats")
     .select("*")
     .eq("creation_id", id)
     .order("date", { ascending: false })
     .limit(30);
+
+  if (dailyErr) {
+    console.error("[analytics] getCreationAnalytics: store_daily_stats query failed:", dailyErr.message);
+  }
 
   const daily = dailyStatsRows || [];
   const avgDailyClicks =
@@ -190,11 +202,15 @@ export async function getCreationDailyStats(
 
   // Fallback: calculate from raw clicks data
   const sinceMs = now() - days * 24 * 60 * 60 * 1000;
-  const { data: clickRows } = await supabase
+  const { data: clickRows, error: clicksErr } = await supabase
     .from("store_clicks")
     .select("session_id, clicked_at")
     .eq("creation_id", id)
     .gte("clicked_at", new Date(sinceMs).toISOString());
+
+  if (clicksErr) {
+    console.error("[analytics] getCreationDailyStats: store_clicks query failed:", clicksErr.message);
+  }
 
   const byDate = new Map<string, { clicks: number; sessions: Set<string> }>();
   for (const c of clickRows || []) {
@@ -224,10 +240,14 @@ export async function getTopReferrers(creationId: string, limit: number = 10): P
   const id = creationId;
   if (!id) return [];
 
-  const { data: clickRows } = await supabase
+  const { data: clickRows, error: refErr } = await supabase
     .from("store_clicks")
     .select("referrer")
     .eq("creation_id", id);
+
+  if (refErr) {
+    console.error("[analytics] getTopReferrers: store_clicks query failed:", refErr.message);
+  }
 
   const counts: Record<string, number> = {};
   const rows = clickRows || [];
@@ -255,10 +275,14 @@ export async function getDeviceBreakdown(creationId: string): Promise<DeviceStat
   const id = creationId;
   if (!id) return [];
 
-  const { data: clickRows } = await supabase
+  const { data: clickRows, error: devErr } = await supabase
     .from("store_clicks")
     .select("user_agent")
     .eq("creation_id", id);
+
+  if (devErr) {
+    console.error("[analytics] getDeviceBreakdown: store_clicks query failed:", devErr.message);
+  }
 
   const deviceCounts: Record<string, number> = {};
   const rows = clickRows || [];
@@ -380,33 +404,72 @@ export async function recordInstall(
 ): Promise<boolean> {
   const supabase = db();
 
-  const { data: creation } = await supabase
+  const { data: creation, error: creationErr } = await supabase
     .from("store_creations")
     .select("id, url")
     .eq("proxy_code", proxyCode)
     .maybeSingle();
 
+  if (creationErr) {
+    console.error("[analytics] recordInstall: creation lookup failed:", creationErr.message);
+    return false;
+  }
+
   if (!creation) return false;
 
   // Check if this session already installed this creation (prevent duplicates)
-  const { data: existingInstall } = await supabase
+  const { data: existingInstall, error: existingErr } = await supabase
     .from("store_installs")
     .select("id")
     .eq("creation_id", creation.id)
     .eq("session_id", sessionId)
     .maybeSingle();
 
+  if (existingErr) {
+    console.error("[analytics] recordInstall: existing install check failed:", existingErr.message);
+  }
+
   if (existingInstall) return true; // Already installed
 
   // Record the install
-  await supabase.from("store_installs").insert({
+  const { error: insertErr } = await supabase.from("store_installs").insert({
     creation_id: creation.id,
     session_id: sessionId,
     user_agent: userAgent || null,
     installed_at: new Date().toISOString(),
   });
 
+  if (insertErr) {
+    console.error("[analytics] recordInstall: insert failed:", insertErr.message);
+    return false;
+  }
+
   return true;
+}
+
+/**
+ * Record a click event from the detail page (not just proxy redirects).
+ * Also works as a fallback install recorder when proxy code is missing.
+ */
+export async function recordDetailClick(
+  creationId: string,
+  sessionId: string,
+  userAgent?: string,
+  referrer?: string | null
+): Promise<void> {
+  const supabase = db();
+
+  const { error } = await supabase.from("store_clicks").insert({
+    creation_id: creationId,
+    session_id: sessionId,
+    user_agent: userAgent || null,
+    referrer: referrer || null,
+    clicked_at: new Date().toISOString(),
+  });
+
+  if (error) {
+    console.error("[analytics] recordDetailClick: insert failed:", error.message);
+  }
 }
 
 /**
