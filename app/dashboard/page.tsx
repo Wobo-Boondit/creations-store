@@ -2,7 +2,8 @@ import { getCurrentUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { getUserCreations, getAllCategories } from "@/lib/data";
 import { UserCreationManager } from "@/components/user/user-creation-manager";
-import { LayoutGrid, FileText, FolderKanban } from "lucide-react";
+import Link from "next/link";
+import { Settings } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -21,69 +22,64 @@ export default async function DashboardPage() {
   const drafts = creations.filter((b) => b.status === "draft");
   const published = creations.filter((b) => b.status === "published");
 
+  const stats = [
+    { label: "Total", value: creations.length, dot: "bg-primary" },
+    { label: "Published", value: published.length, dot: "bg-secondary" },
+    { label: "Drafts", value: drafts.length, dot: "bg-accent" },
+  ];
+
   return (
     <div className="flex min-h-screen flex-1 flex-col">
       <div className="flex-1 overflow-y-auto">
         <div className="p-8">
           <div className="space-y-8">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b pb-8">
-              <div>
-                <h1 className="text-3xl font-bold tracking-tight">
-                  My Dashboard
-                </h1>
-                <p className="text-muted-foreground mt-1">
-                  Manage your creations and drafts
-                </p>
+            {/* Compact header */}
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold tracking-tight">
+                My Dashboard
+              </h1>
+              <div className="flex items-center gap-4">
+                <Link
+                  href="/dashboard/settings"
+                  className="inline-flex h-8 items-center gap-2 rounded-md border bg-transparent px-3 text-sm font-medium transition-colors hover:bg-card"
+                >
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Link>
+                <div className="flex items-center gap-2.5">
+                  {user.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={user.avatar}
+                      alt={user.name}
+                      className="h-8 w-8 rounded-full border object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full border bg-muted text-xs font-bold">
+                      {user.name?.[0]?.toUpperCase() || "?"}
+                    </div>
+                  )}
+                  <span className="hidden text-sm font-medium sm:inline">
+                    {user.username || user.name}
+                  </span>
+                </div>
               </div>
             </div>
-            {/* Stats */}
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="rounded-xl border bg-card p-6">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <LayoutGrid className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold">
-                      {creations.length}
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      Total Creations
-                    </div>
-                  </div>
+
+            {/* Stat pills */}
+            <div className="flex flex-wrap gap-3">
+              {stats.map((stat) => (
+                <div
+                  key={stat.label}
+                  className="flex items-center gap-2.5 rounded-full border bg-card px-4 py-2"
+                >
+                  <span className={`h-2 w-2 rounded-full ${stat.dot}`} />
+                  <span className="text-sm font-semibold">{stat.value}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {stat.label}
+                  </span>
                 </div>
-              </div>
-              <div className="rounded-xl border bg-card p-6">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <FolderKanban className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold">
-                      {published.length}
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      Published
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-xl border bg-card p-6">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <FileText className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <div className="text-2xl font-bold">
-                      {drafts.length}
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      Drafts
-                    </div>
-                  </div>
-                </div>
-              </div>
+              ))}
             </div>
 
             {/* Creation Manager */}
