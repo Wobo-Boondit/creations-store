@@ -3,10 +3,44 @@ import { notFound } from "next/navigation";
 import { CreationCard } from "@/components/creation-card";
 import { CreationGrid } from "@/components/creation-grid";
 import { User, Calendar, Layers } from "lucide-react";
+import type { Metadata } from "next";
+import { directory } from "@/directory.config";
 
 type Props = {
   params: Promise<{ userId: string }>;
 };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { userId } = await params;
+  const profile = await getUserProfile(userId);
+
+  if (!profile) {
+    return { title: "User Not Found" };
+  }
+
+  const profileUrl = `${directory.baseUrl}/u/${userId}`;
+
+  return {
+    title: `${profile.username} | ${directory.name}`,
+    description: `${profile.username} has ${profile.creationCount} ${profile.creationCount === 1 ? "creation" : "creations"} on ${directory.name}`,
+    openGraph: {
+      title: profile.username,
+      description: `${profile.creationCount} ${profile.creationCount === 1 ? "creation" : "creations"} on ${directory.name}`,
+      url: profileUrl,
+      siteName: directory.name,
+      type: "profile",
+      images: profile.avatarUrl
+        ? [{ url: profile.avatarUrl, alt: profile.username }]
+        : [],
+    },
+    twitter: {
+      card: "summary",
+      title: profile.username,
+      description: `${profile.creationCount} ${profile.creationCount === 1 ? "creation" : "creations"} on ${directory.name}`,
+      images: profile.avatarUrl ? [profile.avatarUrl] : [],
+    },
+  };
+}
 
 export default async function UserProfilePage({ params }: Props) {
   const { userId } = await params;
