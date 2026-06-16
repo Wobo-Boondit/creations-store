@@ -1,7 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/admin";
-import { generateSlug } from "@/lib/utils";
+import { generateSlug, generateProxyCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -406,7 +406,7 @@ export async function createCreation(
       url: formData.url,
       description: formData.description,
       category_id: formData.categoryId === "none" ? null : formData.categoryId,
-      searchResults: formData.searchResults || null,
+      search_results: formData.searchResults || null,
       is_favorite: formData.isFavorite === "true",
       is_archived: formData.isArchived === "true",
       overview: formData.overview,
@@ -417,6 +417,7 @@ export async function createCreation(
       screenshot_url: formData.screenshotUrl,
       user_id: sessionUser.id,
       status: formData.status || "draft",
+      proxy_code: generateProxyCode(),
     });
 
     if (error) {
@@ -508,7 +509,7 @@ export async function updateCreation(
         url: formData.url,
         description: formData.description,
         category_id: formData.categoryId === "none" ? null : formData.categoryId,
-        searchResults: formData.searchResults || null,
+        search_results: formData.searchResults || null,
         overview: formData.overview,
         icon_url: formData.iconUrl,
         og_image: formData.ogImage,
@@ -910,7 +911,7 @@ export async function bulkUploadCreations(
           description: content.description,
           url: content.url,
           overview: content.overview || "",
-          searchResults: content.searchResults || null,
+          search_results: content.searchResults || null,
           icon_url: content.iconUrl || "",
           og_image: content.ogImage || "",
           slug: content.slug || generateSlug(content.title),
@@ -920,6 +921,7 @@ export async function bulkUploadCreations(
           category_id: null,
           is_favorite: false,
           is_archived: false,
+          proxy_code: generateProxyCode(),
         });
 
         if (!error) {
