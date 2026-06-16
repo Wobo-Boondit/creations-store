@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Analytics } from "@vercel/analytics/react";
 import Link from "next/link";
 import Logo from "@/public/logo.svg";
 import "./globals.css";
@@ -32,7 +31,6 @@ export default async function RootLayout({
         <Header user={user} />
         {children}
         <Footer />
-        <Analytics />
       </body>
     </html>
   );
