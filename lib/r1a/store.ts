@@ -7,6 +7,7 @@ interface ConnectedDevice {
   socket: any; // Socket.IO socket
   apiKeyHash: string;
   userId: string | null;
+  deviceId?: string | null;
   linkId: string | null;
   connectedAt: string;
   userAgent: string;
@@ -168,10 +169,46 @@ export async function proxyChatCompletion(
   });
 
   const result = await responsePromise;
+
+  // Log the exchange so usage stats/graphs reflect real traffic. This is the
+  // single choke point for ALL chat requests (OpenAI-compatible API + the
+  // dashboard test chat), so logging here keeps every path counted. Best-effort
+  // — a logging failure must never fail the user's request.
+  if (device.userId) {
+    logConversation(device.userId, device.deviceId ?? 'unknown', [
+      { role: 'user', content: payload.originalMessage ?? payload.message },
+      { role: 'assistant', content: result.response ?? '' },
+    ]);
+  }
+
   return {
     response: result.response,
     model: result.model || payload.model || 'r1-command',
   };
+}
+
+// Fire-and-forget insert of conversation turns into r1a_conversations.
+function logConversation(
+  userId: string,
+  deviceId: string,
+  turns: { role: string; content: string }[],
+): void {
+  const supabase = createAdminClient();
+  const nowIso = new Date().toISOString();
+  supabase
+    .from('r1a_conversations')
+    .insert(
+      turns.map((t) => ({
+        user_id: userId,
+        device_id: deviceId,
+        role: t.role,
+        content: t.content,
+        created_at: nowIso,
+      })),
+    )
+    .then(({ error }) => {
+      if (error) console.error('[R1A] conversation log failed:', error.message);
+    });
 }
 
 // ─── TTS Proxy ─────────────────────────────────────────────────

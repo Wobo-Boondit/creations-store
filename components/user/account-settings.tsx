@@ -34,6 +34,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { createBrowserClient } from "@/lib/supabase/client";
 import type { CurrentUser } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+import { R1AUsageChart } from "@/components/r1a-usage-chart";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -72,6 +73,7 @@ interface R1AStats {
   totalRequests: number;
   deviceOnline: boolean;
   lastActivity: string | null;
+  daily?: { date: string; requests: number }[];
 }
 
 const API_BASE_URL = "https://creations.boondit.site";
@@ -313,6 +315,17 @@ function R1ADeviceSection({ userId }: { userId: string }) {
       })
       .catch(() => {});
     setLoading(false);
+  };
+
+  // Refresh just the usage stats (count, last activity, graph) — called after
+  // a test-chat message so the numbers and graph update without a full reload.
+  const refreshStats = async () => {
+    try {
+      const r = await fetch("/api/r1a/stats");
+      if (r.ok) setStats((await r.json()) as R1AStats);
+    } catch {
+      // ignore
+    }
   };
 
   useEffect(() => {
@@ -598,7 +611,16 @@ function R1ADeviceSection({ userId }: { userId: string }) {
             </div>
           )}
 
-          <R1ATestChat online={online} />
+          {stats?.daily && stats.daily.length > 0 && (
+            <div className="rounded-lg border bg-muted/20 px-3 py-3">
+              <p className="text-xs text-muted-foreground mb-2">
+                Requests (last 14 days)
+              </p>
+              <R1AUsageChart data={stats.daily} />
+            </div>
+          )}
+
+          <R1ATestChat online={online} onActivity={refreshStats} />
         </div>
       ) : (
         <div className="space-y-3">
@@ -627,7 +649,13 @@ type ChatMsg = {
   content: string;
 };
 
-function R1ATestChat({ online }: { online: boolean }) {
+function R1ATestChat({
+  online,
+  onActivity,
+}: {
+  online: boolean;
+  onActivity?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -685,6 +713,11 @@ function R1ATestChat({ online }: { online: boolean }) {
             content: data.response || "(empty response)",
           },
         ]);
+        // The request is logged server-side as a best-effort insert that may
+        // land just after the response returns — refresh immediately and once
+        // more shortly after so the count/graph reflect this message.
+        onActivity?.();
+        setTimeout(() => onActivity?.(), 1200);
       }
     } catch {
       setMessages((m) => [

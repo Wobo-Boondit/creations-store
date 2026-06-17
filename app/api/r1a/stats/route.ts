@@ -22,11 +22,13 @@ export async function GET() {
 
     const supabase = createAdminClient();
 
-    // Total requests + last activity from r1a_conversations (scoped to this user)
+    // A "request" is one user turn (each exchange logs a user + assistant row),
+    // so we count/track role='user' rows to avoid double-counting the reply.
     const { data: convData, error: convError } = await supabase
       .from('r1a_conversations')
       .select('created_at')
       .eq('user_id', user.id)
+      .eq('role', 'user')
       .order('created_at', { ascending: false })
       .limit(1);
 
@@ -38,10 +40,33 @@ export async function GET() {
       const { count } = await supabase
         .from('r1a_conversations')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .eq('role', 'user');
       totalRequests = count || 0;
       lastActivity = convData && convData.length > 0 ? convData[0].created_at : null;
     }
+
+    // Daily request counts for the last 14 days (for the usage graph). Pre-seed
+    // every day with 0 so the chart has a continuous x-axis.
+    const DAYS = 14;
+    const since = new Date(Date.now() - (DAYS - 1) * 86400000);
+    since.setUTCHours(0, 0, 0, 0);
+    const buckets = new Map<string, number>();
+    for (let i = 0; i < DAYS; i++) {
+      const d = new Date(since.getTime() + i * 86400000);
+      buckets.set(d.toISOString().slice(0, 10), 0);
+    }
+    const { data: recentRows } = await supabase
+      .from('r1a_conversations')
+      .select('created_at')
+      .eq('user_id', user.id)
+      .eq('role', 'user')
+      .gte('created_at', since.toISOString());
+    for (const row of recentRows || []) {
+      const key = String(row.created_at).slice(0, 10);
+      if (buckets.has(key)) buckets.set(key, (buckets.get(key) || 0) + 1);
+    }
+    const daily = Array.from(buckets, ([date, requests]) => ({ date, requests }));
 
     // Device online status: check the in-memory connectedDevices map for any
     // apiKeyHash that belongs to this user.
@@ -68,6 +93,7 @@ export async function GET() {
       totalRequests,
       deviceOnline,
       lastActivity,
+      daily,
     });
   } catch (err) {
     console.error('GET /api/r1a/stats error:', err);
