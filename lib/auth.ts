@@ -17,6 +17,12 @@ const ADMIN_DISCORD_IDS = (process.env.ADMIN_DISCORD_IDS || "")
   .map((s) => s.trim())
   .filter(Boolean);
 
+// Admin Supabase user IDs from env (comma-separated)
+const ADMIN_USER_IDS = (process.env.ADMIN_USER_IDS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 /**
  * Get the current authenticated user from the Supabase session cookie.
  * Returns null if not logged in.
@@ -51,11 +57,12 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     user.email?.split("@")[0] ||
     "User";
 
-  // Admin check: read Discord ID from identities[] (server-managed, NOT client-writable)
-  // user_metadata.provider_id is client-writable via auth.updateUser() — never use it for authz
+  // Admin check: by Supabase user ID OR Discord provider ID
   const discordIdentity = user.identities?.find((i) => i.provider === "discord");
   const discordProviderId = discordIdentity?.identity_data?.provider_id as string | undefined;
-  const isAdmin = !!discordProviderId && ADMIN_DISCORD_IDS.includes(discordProviderId);
+  const isAdmin =
+    ADMIN_USER_IDS.includes(user.id) ||
+    (!!discordProviderId && ADMIN_DISCORD_IDS.includes(discordProviderId));
 
   return {
     id: user.id,

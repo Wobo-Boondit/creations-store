@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 
+// Admin auth is now Supabase-based — logout goes through the normal signout flow
 export async function POST() {
-  // Remove the authentication cookie
-  const cookieStore = await cookies();
-  cookieStore.delete("boho_token");
-
-  return NextResponse.redirect(new URL("/", process.env.NEXT_PUBLIC_SITE_URL));
+  return NextResponse.redirect(
+    new URL("/auth/signout", process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000")
+  );
 }

@@ -9,6 +9,7 @@ type ChromeUser = {
   id: string;
   username: string;
   avatarUrl: string | null;
+  isAdmin?: boolean;
 } | null;
 
 // Brand stripe — three-section gradient shared with rhythm's header/footer.
@@ -72,7 +73,23 @@ function Header({ user }: { user: ChromeUser }) {
             Donate
           </Link>
           {user ? (
-            <UserMenu username={user.username} avatarUrl={user.avatarUrl} />
+            <>
+              {user.isAdmin && (
+                <Link
+                  href="/admin"
+                  className="rounded-md px-1.5 py-2 text-muted-foreground/40 transition-colors hover:bg-card hover:text-foreground"
+                  title="Admin"
+                  aria-label="Admin dashboard"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block">
+                    <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" />
+                    <path d="M12 16v-4" />
+                    <path d="M12 8h.01" />
+                  </svg>
+                </Link>
+              )}
+              <UserMenu username={user.username} avatarUrl={user.avatarUrl} />
+            </>
           ) : (
             <Link
               href="/auth/signin"

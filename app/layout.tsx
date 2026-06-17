@@ -38,6 +38,7 @@ export default async function RootLayout({
                   id: user.id,
                   username: user.username || user.name,
                   avatarUrl: user.avatar,
+                  isAdmin: user.isAdmin,
                 }
               : null
           }

@@ -1,11 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { boho } from "@/lib/boho";
 
 /**
- * Middleware handles two auth systems:
- * - /admin/* and /api/admin/* → bohoauth (password-based admin auth)
- * - /dashboard/* → Supabase SSR session (Discord OAuth)
+ * Middleware handles Supabase session auth for:
+ * - /admin/* → require logged-in session (admin check happens in page/route handlers via isAdmin())
+ * - /api/admin/* → require logged-in session (same)
+ * - /dashboard/* → require logged-in session
  */
 export async function middleware(request: NextRequest) {
   // CVE-2025-29927: Reject middleware bypass attempts
@@ -20,12 +20,6 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Admin routes use bohoauth
-  if (pathname.startsWith("/admin") || pathname.startsWith("/api/admin")) {
-    return boho.middleware(request);
-  }
-
-  // Dashboard routes use Supabase session
   const response = NextResponse.next({
     request: { headers: request.headers },
   });
@@ -53,8 +47,17 @@ export async function middleware(request: NextRequest) {
   // Refresh the session — this updates the cookie if needed
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Protect /dashboard routes
-  if (pathname.startsWith("/dashboard") && !user) {
+  // Protect /dashboard, /admin, and /api/admin routes — all require a session
+  if (
+    (pathname.startsWith("/dashboard") ||
+      pathname.startsWith("/admin") ||
+      pathname.startsWith("/api/admin")) &&
+    !user
+  ) {
+    // API routes get JSON 401, pages get redirected
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const proto = request.headers.get("x-forwarded-proto") || "https";
     const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || request.nextUrl.host;
     const redirectUrl = new URL("/auth/signin", `${proto}://${host}`);

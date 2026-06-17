@@ -10,14 +10,16 @@ export default function AdminHeader() {
     try {
       const response = await fetch("/api/admin/logout", {
         method: "POST",
+        redirect: "manual",
       });
 
-      if (response.ok) {
-        router.push("/admin/login");
+      if (response.type === "opaqueredirect" || response.status === 0 || response.ok) {
+        router.push("/auth/signout");
         router.refresh();
       }
     } catch (error) {
       console.error("Logout error:", error);
+      router.push("/auth/signout");
     }
   };
 

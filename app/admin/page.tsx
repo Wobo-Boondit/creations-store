@@ -7,7 +7,6 @@ import { BookmarkManager } from "@/components/admin/bookmark-manager";
 import { UserManager } from "@/components/admin/user-manager";
 import { Section, Container } from "@/components/craft";
 import { Bookmark, FolderKanban, Settings2, Users } from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 
@@ -84,23 +83,12 @@ export default async function AdminPage() {
                   Users
                 </TabsTrigger>
               </TabsList>
-              <div className="flex items-center gap-2">
-                <Card className="flex items-center gap-2 p-2">
-                  <Settings2 className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">
-                    Admin Controls
-                  </span>
-                </Card>
-                <form action="/api/admin/logout" method="POST">
-                  <Button
-                    type="submit"
-                    variant="outline"
-                    className="rounded-xl text-muted-foreground"
-                  >
-                    Sign Out
-                  </Button>
-                </form>
-              </div>
+              <Card className="flex items-center gap-2 p-2">
+                <Settings2 className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">
+                  Admin Controls
+                </span>
+              </Card>
             </div>
 
             <TabsContent value="bookmarks" className="space-y-4">
