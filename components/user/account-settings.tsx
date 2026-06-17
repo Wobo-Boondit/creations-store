@@ -103,6 +103,7 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
     { id: "connected", label: "Connected", icon: Link2 },
     { id: "r1a", label: "R1A Device", icon: Smartphone },
     { id: "keys", label: "API Keys", icon: Key },
+    { id: "store-api", label: "Store API", icon: Code },
     { id: "docs", label: "API Docs", icon: Code },
     { id: "account", label: "Account", icon: Settings },
   ];
@@ -237,6 +238,7 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
           {/* ─── R1A Sections ─────────────────────────────────────── */}
           {activeTab === "r1a" && <R1ADeviceSection userId={user.id} />}
           {activeTab === "keys" && <ApiKeysSection />}
+          {activeTab === "store-api" && <StoreApiSection />}
           {activeTab === "docs" && <ApiDocsSection />}
           {/* ─── End R1A Sections ─────────────────────────────────── */}
 
@@ -850,6 +852,244 @@ function R1ATestChat({
         >
           <Send className="h-3.5 w-3.5" />
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Store API Section ────────────────────────────────────────────
+// User-scoped keys for the public /api/v1 store API (read/write your own
+// creations). Distinct from the R1A device keys in ApiKeysSection.
+
+interface StoreKey {
+  key_id: string;
+  key_preview: string;
+  name: string;
+  scopes: string[];
+  created_at: string;
+  last_used: string | null;
+  is_active: boolean;
+}
+
+function StoreApiSection() {
+  const [keys, setKeys] = useState<StoreKey[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState("");
+  const [writeScope, setWriteScope] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newKey, setNewKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const load = async () => {
+    try {
+      const res = await fetch("/api/v1/keys");
+      if (res.ok) setKeys((await res.json()).keys || []);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => {
+    load();
+  }, []);
+
+  const create = async () => {
+    setCreating(true);
+    try {
+      const res = await fetch("/api/v1/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim() || "Default",
+          scopes: writeScope ? ["read", "write"] : ["read"],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to create key");
+        return;
+      }
+      setNewKey(data.apiKey);
+      setName("");
+      setWriteScope(false);
+      load();
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const revoke = async (keyId: string) => {
+    if (!confirm("Revoke this key? Apps using it will stop working immediately."))
+      return;
+    const res = await fetch(`/api/v1/keys/${keyId}`, { method: "DELETE" });
+    if (res.ok) {
+      toast.success("Key revoked");
+      load();
+    } else {
+      toast.error("Failed to revoke");
+    }
+  };
+
+  return (
+    <div className="rounded-xl border bg-card p-6 space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="h-10 w-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+          <Code className="h-5 w-5" />
+        </div>
+        <div>
+          <h3 className="font-semibold">Store API</h3>
+          <p className="text-xs text-muted-foreground">
+            Keys for the public REST API (read the store; manage your own
+            creations). Base URL <code className="font-mono">/api/v1</code>.
+          </p>
+        </div>
+      </div>
+
+      {/* One-time plaintext reveal */}
+      {newKey && (
+        <div className="rounded-lg border border-primary/40 bg-primary/5 p-4 space-y-2">
+          <p className="text-xs font-medium text-primary">
+            Copy your key now — it won't be shown again.
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 truncate rounded bg-background px-3 py-2 font-mono text-xs">
+              {newKey}
+            </code>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                navigator.clipboard.writeText(newKey);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            </Button>
+          </div>
+          <button
+            onClick={() => setNewKey(null)}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            Done
+          </button>
+        </div>
+      )}
+
+      {/* Create form */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+        <div className="flex-1">
+          <Label htmlFor="store-key-name" className="text-xs">
+            New key name
+          </Label>
+          <Input
+            id="store-key-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. CI bot"
+            className="mt-1"
+          />
+        </div>
+        <label className="flex items-center gap-2 text-xs text-muted-foreground sm:pb-2.5">
+          <input
+            type="checkbox"
+            checked={writeScope}
+            onChange={(e) => setWriteScope(e.target.checked)}
+            className="h-4 w-4 rounded border-border"
+          />
+          Allow write
+        </label>
+        <Button size="sm" onClick={create} disabled={creating}>
+          {creating ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Plus className="h-4 w-4 mr-1" />
+          )}
+          Create key
+        </Button>
+      </div>
+
+      {/* Existing keys */}
+      {loading ? (
+        <div className="flex justify-center py-4">
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : keys.filter((k) => k.is_active).length === 0 ? (
+        <p className="text-sm text-muted-foreground">No active keys yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {keys
+            .filter((k) => k.is_active)
+            .map((k) => (
+              <div
+                key={k.key_id}
+                className="flex items-center justify-between rounded-lg border bg-muted/20 px-3 py-2"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium truncate">{k.name}</p>
+                    {k.scopes.map((s) => (
+                      <Badge key={s} variant="secondary" className="text-[10px]">
+                        {s}
+                      </Badge>
+                    ))}
+                  </div>
+                  <p className="font-mono text-xs text-muted-foreground">
+                    {k.key_preview}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {k.last_used
+                      ? `Last used ${formatRelativeTime(k.last_used)}`
+                      : "Never used"}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => revoke(k.key_id)}
+                  className="text-red-400 hover:bg-red-900/20 hover:text-red-400"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+        </div>
+      )}
+
+      {/* Quick reference */}
+      <div className="rounded-lg border bg-muted/10 p-4 space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Quick reference
+        </p>
+        <ul className="space-y-1 text-xs text-muted-foreground">
+          <li>
+            <code className="font-mono">GET /api/v1/creations</code> — list
+            published (public; <code>?limit&amp;offset&amp;category&amp;q</code>)
+          </li>
+          <li>
+            <code className="font-mono">GET /api/v1/creations/:id</code> — one
+            creation (id or slug)
+          </li>
+          <li>
+            <code className="font-mono">POST /api/v1/creations</code> — create
+            (needs <code>write</code>)
+          </li>
+          <li>
+            <code className="font-mono">PATCH/DELETE /api/v1/creations/:id</code>{" "}
+            — update/delete your own (needs <code>write</code>)
+          </li>
+          <li>
+            <code className="font-mono">GET /api/v1/categories</code> — list
+            categories (public)
+          </li>
+        </ul>
+        <pre className="mt-2 overflow-x-auto rounded-md border bg-background p-3 text-[11px] font-mono">
+          {`curl ${API_BASE_URL}/api/v1/creations \\
+  -H "Authorization: Bearer boondit_sk_..."`}
+        </pre>
+        <p className="text-[10px] text-muted-foreground">
+          Anonymous reads: 60/min per IP. With a key: 240 reads/min, 20
+          writes/min.
+        </p>
       </div>
     </div>
   );
