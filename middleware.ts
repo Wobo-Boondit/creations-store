@@ -47,8 +47,12 @@ export async function middleware(request: NextRequest) {
   // Refresh the session — this updates the cookie if needed
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Protect /dashboard, /admin, and /api/admin routes — all require a session
+  // Protect /dashboard, /admin, and /api/admin routes — all require a session.
+  // /admin/login and /api/admin/login are exempt: they're redirect stubs to
+  // /auth/signin that must work without a session.
+  const isLoginRoute = pathname.endsWith("/login");
   if (
+    !isLoginRoute &&
     (pathname.startsWith("/dashboard") ||
       pathname.startsWith("/admin") ||
       pathname.startsWith("/api/admin")) &&
