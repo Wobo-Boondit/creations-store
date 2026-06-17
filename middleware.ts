@@ -58,7 +58,9 @@ export async function middleware(request: NextRequest) {
     const proto = request.headers.get("x-forwarded-proto") || "https";
     const host = request.headers.get("x-forwarded-host") || request.headers.get("host") || request.nextUrl.host;
     const redirectUrl = new URL("/auth/signin", `${proto}://${host}`);
-    redirectUrl.searchParams.set("redirect", pathname);
+    // Preserve the full path + query (e.g. /dashboard/new?prefill=...) so a
+    // prefilled export survives the login round-trip.
+    redirectUrl.searchParams.set("redirect", pathname + request.nextUrl.search);
     return NextResponse.redirect(redirectUrl);
   }
 

@@ -1,6 +1,25 @@
 import Link from "next/link";
 
-export default function SignInPage() {
+// Only allow same-site relative paths as the post-login destination, so the
+// `redirect` param can't be abused as an open redirect to another origin.
+function safeRedirect(value?: string): string | null {
+  if (!value) return null;
+  // Must be a root-relative path, not a protocol-relative ("//evil") or absolute URL.
+  if (!value.startsWith("/") || value.startsWith("//")) return null;
+  return value;
+}
+
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ redirect?: string }>;
+}) {
+  const { redirect } = await searchParams;
+  const dest = safeRedirect(redirect);
+  const discordHref = dest
+    ? `/auth/discord?redirect=${encodeURIComponent(dest)}`
+    : "/auth/discord";
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="w-full max-w-sm space-y-6 px-4">
@@ -13,7 +32,7 @@ export default function SignInPage() {
 
         <div className="rounded-lg border border-border bg-card p-6 space-y-4">
           <a
-            href="/auth/discord"
+            href={discordHref}
             className="flex w-full items-center justify-center gap-2 rounded-md bg-[#5865F2] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity"
           >
             <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24">

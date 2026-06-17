@@ -25,6 +25,13 @@ function resolveOrigin(request: Request): string {
 
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || ".boondit.site";
 
+// Only same-site relative paths may be used as the post-login destination.
+function safeRedirect(value: string | undefined): string | null {
+  if (!value) return null;
+  if (!value.startsWith("/") || value.startsWith("//")) return null;
+  return value;
+}
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
@@ -36,7 +43,18 @@ export async function GET(request: Request) {
   }
   const cookieStore = await cookies();
 
-  const success = NextResponse.redirect(new URL("/dashboard", origin));
+  // Honor a post-login destination set by /auth/discord (e.g. a prefilled
+  // /dashboard/new from the R1 generator), falling back to the dashboard.
+  const dest =
+    safeRedirect(cookieStore.get("boondit_post_login_redirect")?.value) ||
+    "/dashboard";
+  const success = NextResponse.redirect(new URL(dest, origin));
+  // Consume the one-shot redirect cookie.
+  success.cookies.set("boondit_post_login_redirect", "", {
+    path: "/",
+    domain: COOKIE_DOMAIN,
+    maxAge: 0,
+  });
 
   if (code) {
     const supabase = createServerClient(

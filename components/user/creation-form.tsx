@@ -41,12 +41,45 @@ interface Creation {
   status: "draft" | "published";
 }
 
+// Subset of fields an external generator can hand us to prefill the form.
+export interface CreationInitialValues {
+  title?: string;
+  url?: string;
+  description?: string;
+  themeColor?: string;
+  author?: string;
+  iconUrl?: string;
+  screenshotUrl?: string;
+}
+
 interface CreationFormProps {
   categories: Category[];
   userId: string;
   mode: "create" | "edit";
   creation?: Creation;
   username?: string;
+  // Create-mode prefill (e.g. from the R1 generator's "Export to Store").
+  initialValues?: CreationInitialValues;
+}
+
+// Icons must be CDN-hosted to be submitted (createCreation enforces this), so a
+// prefilled off-CDN icon can't go straight into the hidden iconUrl field — we
+// only accept it if it's already on our CDN.
+const CDN_HOST = "cdn.boondit.site";
+function isCdnIcon(url?: string): boolean {
+  if (!url) return false;
+  try {
+    return new URL(url).hostname === CDN_HOST;
+  } catch {
+    return false;
+  }
+}
+
+function slugify(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 export function CreationForm({
@@ -55,6 +88,7 @@ export function CreationForm({
   mode,
   creation,
   username,
+  initialValues,
 }: CreationFormProps) {
   const router = useRouter();
   const [isSaving, setIsSaving] = useState(false);
@@ -62,16 +96,25 @@ export function CreationForm({
   const [uploadingCount, setUploadingCount] = useState(0);
   const [isUploadingIcon, setIsUploadingIcon] = useState(false);
 
+  // Prefill only applies to create mode (edit always wins from `creation`).
+  const init = mode === "create" ? initialValues : undefined;
+
+  // A prefilled icon that ISN'T CDN-hosted can't be submitted directly; surface
+  // it as a suggestion so the user can re-upload it through the CDN.
+  const [suggestedIcon, setSuggestedIcon] = useState<string | null>(
+    init?.iconUrl && !isCdnIcon(init.iconUrl) ? init.iconUrl : null,
+  );
+
   const [formData, setFormData] = useState({
-    title: creation?.title || "",
-    slug: creation?.slug || "",
-    url: creation?.url || "",
-    description: creation?.description || "",
-    iconUrl: creation?.iconUrl || "",
+    title: creation?.title || init?.title || "",
+    slug: creation?.slug || (init?.title ? slugify(init.title) : ""),
+    url: creation?.url || init?.url || "",
+    description: creation?.description || init?.description || "",
+    iconUrl: creation?.iconUrl || (isCdnIcon(init?.iconUrl) ? init!.iconUrl! : ""),
     ogImage: creation?.ogImage || "",
-    themeColor: creation?.themeColor || "#fe5000",
-    author: creation?.author || username || "",
-    screenshotUrl: creation?.screenshotUrl || "",
+    themeColor: creation?.themeColor || init?.themeColor || "#fe5000",
+    author: creation?.author || username || init?.author || "",
+    screenshotUrl: creation?.screenshotUrl || init?.screenshotUrl || "",
     categoryId: creation?.categoryId || "none",
     status: creation?.status || "draft",
   });
@@ -99,11 +142,7 @@ export function CreationForm({
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const title = e.target.value;
-    const slug = title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-    setFormData((prev) => ({ ...prev, title, slug }));
+    setFormData((prev) => ({ ...prev, title, slug: slugify(title) }));
   };
 
   const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -524,6 +563,27 @@ export function CreationForm({
             <p className="text-xs text-muted-foreground">
               Upload from your device. Icons are stored on Boondit CDN.
             </p>
+            {suggestedIcon && !formData.iconUrl && (
+              <div className="flex items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-3 py-2">
+                <img
+                  src={suggestedIcon}
+                  alt="Suggested icon"
+                  className="h-8 w-8 rounded object-cover"
+                />
+                <p className="flex-1 text-xs text-muted-foreground">
+                  Icon from the generator — re-upload it here to host it on the
+                  Boondit CDN.
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSuggestedIcon(null)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
