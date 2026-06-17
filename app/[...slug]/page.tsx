@@ -107,11 +107,13 @@ export default async function Page({ params }: Props) {
   // Get headers for IP tracking and URL generation
   const headersList = await headers();
 
-  // Get a consistent session identifier for view tracking
-  // Use user ID if logged in, otherwise anonymized IP hash
+  // Get a consistent session identifier for view tracking.
+  // Use the *viewer's* id if logged in, otherwise an anonymized IP hash.
+  // (Previously this keyed off bookmark.user — the creation's author — which
+  // meant every logged-in visitor shared one session key per creation.)
   let viewSessionId: string;
-  if (bookmark.user?.id) {
-    viewSessionId = `user_${bookmark.user.id}`;
+  if (user?.id) {
+    viewSessionId = `user_${user.id}`;
   } else {
     // Get IP address from headers for anonymous users
     const forwarded = headersList.get('x-forwarded-for');

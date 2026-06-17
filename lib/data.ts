@@ -232,9 +232,9 @@ export async function incrementCreationViews(id: string, sessionId?: string): Pr
   const supabase = db();
   const session = sessionId || "anonymous";
 
-  // Check if this session viewed in the last hour
+  // Check if this session viewed in the last hour.
   const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
-  const { data: recentView } = await supabase
+  const { data: recentView, error: lookupErr } = await supabase
     .from("store_views")
     .select("id")
     .eq("creation_id", id)
@@ -242,27 +242,41 @@ export async function incrementCreationViews(id: string, sessionId?: string): Pr
     .gt("viewed_at", oneHourAgo)
     .limit(1);
 
-  if (!recentView || recentView.length === 0) {
-    // Increment view count
-    const { data: current } = await supabase
+  // If we can't read the dedup table, don't increment — counting without
+  // working dedup is what makes the counter climb on every refresh.
+  if (lookupErr) {
+    console.error("[data] incrementCreationViews: dedup lookup failed:", lookupErr.message);
+    return;
+  }
+
+  if (recentView && recentView.length > 0) return;
+
+  // Record the view FIRST and confirm it persisted. If the insert fails
+  // (schema/constraint/RLS), bail without bumping the count — otherwise the
+  // dedup row never lands and every subsequent refresh counts again.
+  const { error: insertErr } = await supabase.from("store_views").insert({
+    creation_id: id,
+    session_id: session,
+    viewed_at: new Date().toISOString(),
+  });
+
+  if (insertErr) {
+    console.error("[data] incrementCreationViews: view insert failed:", insertErr.message);
+    return;
+  }
+
+  // Dedup row is durable — now bump the denormalized counter.
+  const { data: current } = await supabase
+    .from("store_creations")
+    .select("views")
+    .eq("id", id)
+    .single();
+
+  if (current) {
+    await supabase
       .from("store_creations")
-      .select("views")
-      .eq("id", id)
-      .single();
-
-    if (current) {
-      await supabase
-        .from("store_creations")
-        .update({ views: (current.views || 0) + 1 })
-        .eq("id", id);
-    }
-
-    // Record the view
-    await supabase.from("store_views").insert({
-      creation_id: id,
-      session_id: session,
-      viewed_at: new Date().toISOString(),
-    });
+      .update({ views: (current.views || 0) + 1 })
+      .eq("id", id);
   }
 }
 

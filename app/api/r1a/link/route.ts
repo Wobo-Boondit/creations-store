@@ -69,14 +69,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'link_failed' }, { status: 500 })
   }
 
-  // Generate a fresh API key for this device
+  // Generate a fresh API key for this device.
+  // NOTE: api_keys has no client_id column (it's tracked on creation_links);
+  // including it here makes Postgres reject the insert -> key_creation_failed.
   const newKey = generateApiKey()
   const { error: keyErr } = await supabase.from('api_keys').insert({
     key_id: newKey.keyId,
     key_hash: newKey.hash,
     key_preview: newKey.preview,
     user_id: pair.userId,
-    client_id: pair.clientId,
     device_id,
     name: 'R1A',
     is_active: true,

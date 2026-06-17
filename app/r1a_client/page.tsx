@@ -14,6 +14,25 @@ interface LogEntry {
 
 type LinkPayload = { v: number; token: string; endpoint: string };
 
+// Minimal shape of the r1-create default export we rely on. The real types
+// ship with the package; we keep a local alias so this file type-checks even
+// where the dependency isn't installed (desktop dev / CI without the SDK).
+type R1MessageResponse = { message?: string; content?: string; data?: string };
+type R1Sdk = {
+  messaging?: {
+    sendMessage: (message: string, options?: Record<string, unknown>) => Promise<void>;
+    onMessage: (handler: (response: R1MessageResponse) => void) => void;
+  };
+  llm?: {
+    textToSpeechAudio?: (
+      text: string,
+      options?: { rate?: number; volume?: number },
+    ) => Promise<Blob | null>;
+  };
+  vision?: { analyzeImage: (img: string, opts: Record<string, unknown>) => void };
+  image?: { analyzeImage: (img: string, opts: Record<string, unknown>) => void };
+};
+
 type AppState =
   | { kind: "booting" }
   | { kind: "unlinked" }
@@ -107,6 +126,15 @@ export default function R1AClientPage() {
   const streamRef = useRef<MediaStream | null>(null);
   const scanAbortRef = useRef<AbortController | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
+  // The r1-create SDK instance (loaded lazily — it only exists in the R1
+  // WebView). Same package rhythm and R-PlusPlus use.
+  const r1Ref = useRef<R1Sdk | null>(null);
+  // The chat request currently awaiting an LLM reply. The R1's onMessage
+  // callback carries no request id, so we correlate by the single in-flight
+  // request — the server (store.ts) only allows one chat per device at a time.
+  const pendingChatRef = useRef<{ requestId: string; originalMessage: string } | null>(
+    null,
+  );
 
   const addLog = useCallback(
     (message: string, level: LogEntry["level"] = "info") => {
@@ -134,6 +162,52 @@ export default function R1AClientPage() {
       setState({ kind: "unlinked" });
     }
   }, []);
+
+  // ─── Load the R1 SDK + register the LLM response listener (once) ──
+  // r1-create is browser-only (it touches window/PluginMessageHandler), so we
+  // import it dynamically — the static import would break SSR, and on desktop
+  // the import simply yields an SDK whose messaging is a no-op. The onMessage
+  // handler is the half that was missing before: without it, every chat
+  // request sat unanswered until the server's 30s timeout.
+  useEffect(() => {
+    let disposed = false;
+    (async () => {
+      try {
+        const mod = await import("r1-create");
+        if (disposed) return;
+        const r1 = (mod.default ?? (mod as { r1?: R1Sdk }).r1) as R1Sdk;
+        r1Ref.current = r1;
+        if (r1?.messaging?.onMessage) {
+          r1.messaging.onMessage((response) => {
+            // The R1 replies with { message: "..." } and no request id, so we
+            // pair it with the single in-flight chat request.
+            const pending = pendingChatRef.current;
+            const socket = socketRef.current;
+            if (!pending || !socket?.connected) return;
+            const text =
+              response?.message || response?.content || "(empty response)";
+            socket.emit("response", {
+              requestId: pending.requestId,
+              response: text,
+              originalMessage: pending.originalMessage,
+              model: "r1-llm",
+              timestamp: new Date().toISOString(),
+            });
+            addLog(`Sent LLM response (${pending.requestId})`);
+            pendingChatRef.current = null;
+          });
+          addLog("R1 SDK ready");
+        } else {
+          addLog("R1 SDK has no messaging API (desktop?)", "warn");
+        }
+      } catch {
+        addLog("R1 SDK unavailable — running outside the R1 WebView", "warn");
+      }
+    })();
+    return () => {
+      disposed = true;
+    };
+  }, [addLog]);
 
   // ─── Connect via Socket.IO when we have an API key ────────────
   const connect = useCallback(
@@ -199,6 +273,9 @@ export default function R1AClientPage() {
       });
 
       // ─── Chat Completion Handler ─────────────────────────────
+      // Hand the prompt to the R1 LLM and stash the request id. The reply
+      // arrives asynchronously on the SDK's onMessage callback (registered
+      // once, above), which emits the `response` the server is waiting on.
       socket.on("chat_completion", (data: any) => {
         const msgData = data.data || data;
         const requestId = msgData.requestId;
@@ -208,25 +285,34 @@ export default function R1AClientPage() {
 
         addLog(`Chat request received (${requestId})`);
 
-        const r1Create = (window as any).r1Create;
+        const r1 = r1Ref.current;
 
-        if (r1Create && r1Create.messaging) {
+        if (r1?.messaging?.sendMessage) {
           try {
-            const options: any = {
+            const options: Record<string, unknown> = {
               useLLM: true,
               wantsR1Response: false,
               wantsJournalEntry: true,
               requestId,
             };
-
             if (imageBase64) options.imageBase64 = imageBase64;
             if (pluginId) options.pluginId = pluginId;
 
-            if (imageBase64 && (r1Create.vision || r1Create.image)) {
-              const visionAPI = r1Create.vision || r1Create.image;
+            // Record the in-flight request so onMessage can route the reply.
+            pendingChatRef.current = { requestId, originalMessage: message };
+
+            if (imageBase64 && (r1.vision || r1.image)) {
+              const visionAPI = (r1.vision || r1.image)!;
               visionAPI.analyzeImage(imageBase64, { message, ...options });
             } else {
-              r1Create.messaging.sendMessage(message, options);
+              // sendMessage is async; the LLM text comes back via onMessage.
+              Promise.resolve(r1.messaging.sendMessage(message, options)).catch(
+                (err: Error) => {
+                  pendingChatRef.current = null;
+                  addLog(`R1 sendMessage failed: ${err.message}`, "error");
+                  socket.emit("device_error", { requestId, error: err.message });
+                },
+              );
             }
 
             socket.emit("message_received", {
@@ -234,37 +320,67 @@ export default function R1AClientPage() {
               timestamp: new Date().toISOString(),
             });
           } catch (err: any) {
+            pendingChatRef.current = null;
             addLog(`R1 SDK error: ${err.message}`, "error");
             socket.emit("device_error", { requestId, error: err.message });
           }
         } else {
           addLog("R1 SDK not available", "warn");
-          socket.emit("response", {
+          socket.emit("device_error", {
             requestId,
-            response: `[R1A bridge: no R1 SDK available] message was: "${message.substring(0, 100)}"`,
-            originalMessage: message,
-            model: "r1a-bridge",
-            timestamp: new Date().toISOString(),
+            error: "R1 SDK unavailable on this device",
           });
         }
       });
 
       // ─── TTS Handler ─────────────────────────────────────────
-      socket.on("text_to_speech", (data: any) => {
+      // textToSpeechAudio returns a Blob; we base64-encode it and ship it back
+      // as `tts_response`, which the /v1/audio/speech proxy decodes to binary.
+      socket.on("text_to_speech", async (data: any) => {
         const msgData = data.data || data;
         const requestId = msgData.requestId;
         const text = msgData.text || msgData.input || "";
+        const speed = typeof msgData.speed === "number" ? msgData.speed : 1.0;
 
         addLog(`TTS request received (${requestId})`);
 
-        const r1Create = (window as any).r1Create;
-        if (r1Create && r1Create.tts) {
-          try {
-            r1Create.tts.synthesize(text, { requestId });
-          } catch (err: any) {
-            addLog(`TTS error: ${err.message}`, "error");
-            socket.emit("device_error", { requestId, error: err.message });
+        const r1 = r1Ref.current;
+        if (!r1?.llm?.textToSpeechAudio) {
+          addLog("R1 TTS API not available", "warn");
+          socket.emit("device_error", {
+            requestId,
+            error: "R1 TTS unavailable on this device",
+          });
+          return;
+        }
+
+        try {
+          const blob = await r1.llm.textToSpeechAudio(text, {
+            rate: speed,
+            volume: 0.8,
+          });
+          if (!blob) {
+            socket.emit("device_error", {
+              requestId,
+              error: "TTS returned no audio",
+            });
+            return;
           }
+          const buf = new Uint8Array(await blob.arrayBuffer());
+          let binary = "";
+          for (let i = 0; i < buf.length; i++) {
+            binary += String.fromCharCode(buf[i]);
+          }
+          socket.emit("tts_response", {
+            requestId,
+            audioData: btoa(binary),
+            audioFormat: "mp3",
+            timestamp: new Date().toISOString(),
+          });
+          addLog(`Sent TTS audio (${requestId})`);
+        } catch (err: any) {
+          addLog(`TTS error: ${err.message}`, "error");
+          socket.emit("device_error", { requestId, error: err.message });
         }
       });
 
