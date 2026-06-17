@@ -3,6 +3,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import jsQR from "jsqr";
+import { QRCodeSVG } from "qrcode.react";
+
+// Where the user generates a pairing QR. The unlinked screen shows a QR to this
+// page so a phone can jump straight to setup.
+const SETTINGS_URL = "https://creations.boondit.site/dashboard/settings";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -594,7 +599,7 @@ export default function R1AClientPage() {
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-background p-2.5 font-mono text-foreground">
+    <div className="flex h-full w-full flex-col bg-background p-2.5 font-sans text-foreground">
       {/* Header */}
       <div className="mb-2 flex shrink-0 items-baseline justify-between">
         <h1 className="text-sm font-bold text-primary">R1A Client</h1>
@@ -608,17 +613,39 @@ export default function R1AClientPage() {
         </div>
       )}
 
-      {/* ─── Unlinked: Link button ─── */}
+      {/* ─── Unlinked: setup QR + instructions, then Link button ─── */}
       {state.kind === "unlinked" && (
-        <div className="flex flex-1 flex-col items-center justify-center px-2 text-center">
-          <p className="mb-3 text-[10px] leading-snug text-muted-foreground">
-            Scan a pairing QR from your settings to link this device.
+        <div className="flex flex-1 flex-col items-center overflow-y-auto px-1 text-center scrollbar-hide">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Set up R1A
           </p>
+          <div className="mb-2 rounded bg-white p-1.5">
+            <QRCodeSVG value={SETTINGS_URL} size={92} />
+          </div>
+          <p className="mb-2 text-[9px] leading-snug text-muted-foreground">
+            On your phone, scan this or visit{" "}
+            <span className="text-foreground">creations.boondit.site</span> →
+            Settings → R1A and tap <span className="text-foreground">Pair</span>.
+          </p>
+          <ol className="mb-3 space-y-0.5 text-left text-[9px] leading-snug text-muted-foreground">
+            <li>
+              <span className="text-primary">1.</span> Sign in &amp; open
+              Settings → R1A
+            </li>
+            <li>
+              <span className="text-primary">2.</span> Tap “Pair R1A” to show a
+              QR
+            </li>
+            <li>
+              <span className="text-primary">3.</span> Tap below, then scan that
+              QR
+            </li>
+          </ol>
           <button
             onClick={startScan}
             className="rounded bg-primary px-4 py-1.5 text-[11px] font-semibold text-primary-foreground active:scale-95"
           >
-            Link Device
+            Scan pairing QR
           </button>
         </div>
       )}

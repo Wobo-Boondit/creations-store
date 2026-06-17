@@ -31,7 +31,17 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className={`${font.className} ${font.variable} antialiased`}>
-        <SiteChrome user={user ? { id: user.id } : null}>
+        <SiteChrome
+          user={
+            user
+              ? {
+                  id: user.id,
+                  username: user.username || user.name,
+                  avatarUrl: user.avatar,
+                }
+              : null
+          }
+        >
           {children}
         </SiteChrome>
       </body>
