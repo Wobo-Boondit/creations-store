@@ -119,6 +119,67 @@ export function CreationForm({
     status: creation?.status || "draft",
   });
 
+  // ── Import from a rabbit.tech share link (create mode only) ──
+  const [shareUrl, setShareUrl] = useState("");
+  const [importing, setImporting] = useState(false);
+
+  const handleImport = async () => {
+    const link = shareUrl.trim();
+    if (!link) return;
+    setImporting(true);
+    try {
+      const res = await fetch("/api/import-creation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shareUrl: link }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to import");
+        return;
+      }
+      const pf = data.prefill || {};
+      setFormData((prev) => ({
+        ...prev,
+        title: pf.title || prev.title,
+        slug: pf.title ? slugify(pf.title) : prev.slug,
+        url: pf.url || prev.url,
+        description: pf.description || prev.description,
+        themeColor: pf.themeColor || prev.themeColor,
+        // Images are already re-hosted on the CDN by the import route, so they
+        // drop straight into the submittable fields.
+        iconUrl: pf.iconUrl || prev.iconUrl,
+        screenshotUrl: pf.screenshotUrl || prev.screenshotUrl,
+      }));
+      if (pf.screenshotUrl) {
+        setScreenshots((prev) =>
+          prev.some((s) => s.url === pf.screenshotUrl)
+            ? prev
+            : [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  url: pf.screenshotUrl,
+                  isMain: prev.length === 0,
+                  isUploading: false,
+                },
+              ],
+        );
+      }
+      const warns = data.warnings || {};
+      if (warns.iconFailed || warns.screenshotFailed) {
+        toast.warning("Imported, but some images couldn't be fetched — upload them manually.");
+      } else {
+        toast.success("Imported from share link");
+      }
+      setShareUrl("");
+    } catch {
+      toast.error("Failed to import");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   // Load screenshots when editing
   useEffect(() => {
     if (mode === "edit" && creation?.id) {
@@ -371,6 +432,48 @@ export function CreationForm({
       <input type="hidden" name="id" value={creation?.id || ""} />
       <input type="hidden" name="slug" value={formData.slug} />
       <input type="hidden" name="screenshotUrl" value={formData.screenshotUrl} />
+
+      {/* Import from a share link (create mode) */}
+      {mode === "create" && (
+        <div className="space-y-2 rounded-xl border border-dashed bg-muted/20 p-4">
+          <Label htmlFor="shareUrl" className="text-sm font-semibold">
+            Import from a share link
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            Paste a rabbit.tech share link — we'll prefill the fields and copy
+            its icon &amp; screenshot to the Boondit CDN.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              id="shareUrl"
+              value={shareUrl}
+              onChange={(e) => setShareUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleImport();
+                }
+              }}
+              placeholder="https://www.rabbit.tech/share_creation?url=…"
+              className="flex-1"
+            />
+            <Button
+              type="button"
+              onClick={handleImport}
+              disabled={importing || !shareUrl.trim()}
+            >
+              {importing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Importing…
+                </>
+              ) : (
+                "Import"
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Basic Information */}
       <div className="space-y-4 rounded-xl border bg-card p-6">
