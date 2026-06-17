@@ -101,8 +101,11 @@ export const CreationCard = ({ creation }: CreationCardProps) => {
           <div className="relative p-4 pb-3">
             <div className="flex items-start justify-between">
               <div
-                className="flex items-center justify-center rounded-md border border-border bg-background p-2"
-                style={accent ? { borderColor: `${accent}40` } : undefined}
+                className="flex h-16 w-16 items-center justify-center rounded-md border p-2"
+                style={{
+                  backgroundColor: accent || "hsl(var(--muted))",
+                  borderColor: accent ? `${accent}40` : "hsl(var(--border))",
+                }}
               >
                 {iconSrc ? (
                   <img
@@ -110,14 +113,15 @@ export const CreationCard = ({ creation }: CreationCardProps) => {
                     alt={`${creation.title} icon`}
                     width={48}
                     height={48}
-                    className="h-12 w-12 rounded-md"
+                    className="h-12 w-12 rounded-md object-contain"
                   />
                 ) : (
-                  <AppWindow
-                    className="h-12 w-12 text-muted-foreground"
-                    style={accent ? { color: `${accent}80` } : undefined}
-                    aria-hidden="true"
-                  />
+                  <span
+                    className="text-2xl font-bold"
+                    style={{ color: accent ? "#fff" : "hsl(var(--muted-foreground))" }}
+                  >
+                    {creation.title[0]?.toUpperCase()}
+                  </span>
                 )}
               </div>
 
@@ -184,7 +188,7 @@ export const CreationCard = ({ creation }: CreationCardProps) => {
               </p>
             )}
 
-            <div className="pt-1">
+            <div className="mt-auto pt-1">
               <Button
                 variant="outline"
                 size="sm"

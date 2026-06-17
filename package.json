@@ -41,6 +41,7 @@
     "react-markdown": "^9.0.1",
     "react-use-measure": "^2.1.1",
     "react-wrap-balancer": "^1.1.1",
+    "recharts": "^3.8.1",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "sonner": "^1.7.0",

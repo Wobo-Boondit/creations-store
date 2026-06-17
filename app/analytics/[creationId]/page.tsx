@@ -16,6 +16,7 @@ import {
   Star,
 } from "lucide-react";
 import { directory } from "@/directory.config";
+import { InstallChart } from "@/components/install-chart";
 
 interface AnalyticsPageProps {
   params: Promise<{ creationId: string }>;
@@ -65,20 +66,25 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
 
           {/* Creation header */}
           <div className="flex items-center gap-4">
-            {creation.iconUrl || creation.favicon ? (
-              <img
-                src={creation.iconUrl || creation.favicon || ""}
-                alt={creation.title}
-                className="h-16 w-16 rounded-2xl border"
-              />
-            ) : (
-              <div
-                className="h-16 w-16 rounded-2xl border bg-muted flex items-center justify-center text-2xl font-bold"
-                style={creation.themeColor ? { color: creation.themeColor } : undefined}
-              >
-                {creation.title[0]?.toUpperCase()}
-              </div>
-            )}
+            <div
+              className="flex h-16 w-16 items-center justify-center rounded-2xl border"
+              style={{ backgroundColor: creation.themeColor || "hsl(var(--muted))" }}
+            >
+              {creation.iconUrl || creation.favicon ? (
+                <img
+                  src={creation.iconUrl || creation.favicon || ""}
+                  alt={creation.title}
+                  className="h-12 w-12 rounded-xl object-contain"
+                />
+              ) : (
+                <span
+                  className="text-2xl font-bold"
+                  style={{ color: creation.themeColor ? "#fff" : "hsl(var(--muted-foreground))" }}
+                >
+                  {creation.title[0]?.toUpperCase()}
+                </span>
+              )}
+            </div>
             <div>
               <h1 className="text-2xl font-bold">{creation.title}</h1>
               {creation.author && (
@@ -125,24 +131,7 @@ export default async function AnalyticsPage({ params }: AnalyticsPageProps) {
                 No installs yet. Share your creation to get started.
               </p>
             ) : (
-              <div className="flex items-end gap-1 h-32">
-                {sparkData.map((val, i) => (
-                  <div
-                    key={i}
-                    className="flex-1 bg-primary/80 hover:bg-primary transition-colors rounded-t-sm group relative"
-                    style={{
-                      height: `${Math.max((val / maxSpark) * 100, val > 0 ? 8 : 0)}%`,
-                      minHeight: val > 0 ? "4px" : "0",
-                    }}
-                  >
-                    {val > 0 && (
-                      <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-medium text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
-                        {val}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
+              <InstallChart data={sparkData} />
             )}
           </div>
 

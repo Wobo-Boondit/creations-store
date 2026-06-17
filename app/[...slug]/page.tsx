@@ -158,19 +158,25 @@ export default async function Page({ params }: Props) {
             <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:gap-8">
               {/* App Icon */}
               <div className="flex-shrink-0">
-                <div className="group relative">
+                <div
+                  className="group relative flex h-32 w-32 items-center justify-center rounded-3xl border-4 border-background shadow-xl transition-transform group-hover:scale-105"
+                  style={{ backgroundColor: bookmark.themeColor || "hsl(var(--muted))" }}
+                >
                   {bookmark.iconUrl || bookmark.favicon || bookmark.ogImage ? (
                     <img
                       src={bookmark.iconUrl || bookmark.favicon || bookmark.ogImage!}
                       alt={`${bookmark.title} icon`}
                       width={128}
                       height={128}
-                      className="h-32 w-32 rounded-3xl border-4 border-background shadow-xl transition-transform group-hover:scale-105"
+                      className="h-24 w-24 rounded-2xl object-contain"
                     />
                   ) : (
-                    <div className="flex h-32 w-32 items-center justify-center rounded-3xl border-4 border-background bg-gradient-to-br from-primary/20 to-primary/5 shadow-xl">
-                      <AppWindow className="h-16 w-16 text-muted-foreground" />
-                    </div>
+                    <span
+                      className="text-5xl font-bold"
+                      style={{ color: bookmark.themeColor ? "#fff" : "hsl(var(--muted-foreground))" }}
+                    >
+                      {bookmark.title[0]?.toUpperCase()}
+                    </span>
                   )}
                 </div>
               </div>
