@@ -401,245 +401,148 @@ export default function R1AClientPage() {
   }, []);
 
   // ─── Render ───────────────────────────────────────────────────
+  // Everything is authored in device-pixels for the R1's 240×282 canvas
+  // (see layout.tsx). The scanning view is full-bleed; every other view is
+  // a centered Screen. Mirrors rhythm's creation-app.tsx.
+
+  const statusColor =
+    state.kind === "linked" && connected
+      ? "text-green-400"
+      : state.kind === "scanning" || state.kind === "linking"
+        ? "text-amber-400"
+        : "text-red-400";
 
   const statusText =
     state.kind === "booting"
-      ? "Booting..."
+      ? "Booting…"
       : state.kind === "unlinked"
         ? "Not linked"
         : state.kind === "scanning"
-          ? "Scanning..."
+          ? "Scanning…"
           : state.kind === "linking"
-            ? "Linking..."
+            ? "Linking…"
             : state.kind === "error"
               ? "Error"
               : connected
                 ? "Connected"
-                : "Connecting...";
+                : "Connecting…";
+
+  // ─── Scanning: full-bleed camera ───
+  if (state.kind === "scanning") {
+    return (
+      <div className="relative h-full w-full bg-black">
+        <video
+          ref={videoRef}
+          className="h-full w-full object-cover"
+          playsInline
+          muted
+          autoPlay
+          disablePictureInPicture
+          controls={false}
+        />
+        <div className="absolute inset-x-0 bottom-2 flex flex-col items-center gap-1.5">
+          <p className="rounded bg-black/60 px-2 py-0.5 text-[10px] text-white">
+            Point camera at QR
+          </p>
+          <button
+            onClick={cancelScan}
+            className="rounded bg-white/10 px-3 py-1 text-[10px] text-white active:scale-95"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div
-      style={{
-        fontFamily: "monospace",
-        background: "#0a0a0a",
-        color: "#e0e0e0",
-        minHeight: "100vh",
-        padding: "20px",
-        margin: 0,
-        maxWidth: "100%",
-        boxSizing: "border-box",
-      }}
-    >
+    <div className="flex h-full w-full flex-col bg-background p-2.5 font-mono text-foreground">
       {/* Header */}
-      <div style={{ marginBottom: "20px" }}>
-        <h1 style={{ fontSize: "1.5rem", margin: "0 0 8px", color: "#FE5F00" }}>
-          R1A Client
-        </h1>
-        <div style={{ fontSize: "0.85rem", opacity: 0.7 }}>
-          Status:{" "}
-          <span
-            style={{
-              color:
-                state.kind === "linked" && connected
-                  ? "#4ade80"
-                  : state.kind === "scanning" || state.kind === "linking"
-                    ? "#fbbf24"
-                    : "#f87171",
-            }}
-          >
-            {statusText}
-          </span>
-        </div>
+      <div className="mb-2 flex shrink-0 items-baseline justify-between">
+        <h1 className="text-sm font-bold text-primary">R1A Client</h1>
+        <span className={`text-[10px] ${statusColor}`}>{statusText}</span>
       </div>
 
       {/* ─── Booting ─── */}
       {state.kind === "booting" && (
-        <div style={{ textAlign: "center", padding: "40px", opacity: 0.5 }}>
-          Loading...
+        <div className="flex flex-1 items-center justify-center text-[11px] opacity-50">
+          Loading…
         </div>
       )}
 
-      {/* ─── Unlinked: show Link button ─── */}
+      {/* ─── Unlinked: Link button ─── */}
       {state.kind === "unlinked" && (
-        <div style={{ textAlign: "center", padding: "40px 0" }}>
-          <p style={{ fontSize: "0.9rem", opacity: 0.6, marginBottom: "20px" }}>
+        <div className="flex flex-1 flex-col items-center justify-center px-2 text-center">
+          <p className="mb-3 text-[10px] leading-snug text-muted-foreground">
             Scan a pairing QR from your settings to link this device.
           </p>
           <button
             onClick={startScan}
-            style={{
-              padding: "14px 32px",
-              background: "#FE5F00",
-              color: "#fff",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontFamily: "monospace",
-              fontSize: "1rem",
-              fontWeight: "bold",
-            }}
+            className="rounded bg-primary px-4 py-1.5 text-[11px] font-semibold text-primary-foreground active:scale-95"
           >
             Link Device
           </button>
         </div>
       )}
 
-      {/* ─── Scanning: camera view ─── */}
-      {state.kind === "scanning" && (
-        <div style={{ position: "relative", height: "400px", marginBottom: "20px" }}>
-          <video
-            ref={videoRef}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              borderRadius: "4px",
-            }}
-            playsInline
-            muted
-            autoPlay
-            controls={false}
-          />
-          <div
-            style={{
-              position: "absolute",
-              bottom: "12px",
-              left: 0,
-              right: 0,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "8px",
-            }}
-          >
-            <p
-              style={{
-                background: "rgba(0,0,0,0.6)",
-                padding: "4px 12px",
-                borderRadius: "4px",
-                fontSize: "0.75rem",
-              }}
-            >
-              Point camera at QR
-            </p>
-            <button
-              onClick={cancelScan}
-              style={{
-                background: "rgba(255,255,255,0.1)",
-                border: "none",
-                padding: "6px 16px",
-                borderRadius: "4px",
-                color: "#fff",
-                fontSize: "0.75rem",
-                cursor: "pointer",
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* ─── Linking ─── */}
       {state.kind === "linking" && (
-        <div style={{ textAlign: "center", padding: "40px", opacity: 0.6 }}>
-          <p style={{ fontSize: "0.9rem" }}>Linking device...</p>
+        <div className="flex flex-1 items-center justify-center text-[11px] opacity-60">
+          Linking device…
         </div>
       )}
 
       {/* ─── Error ─── */}
       {state.kind === "error" && (
-        <div
-          style={{
-            padding: "20px",
-            background: "#1a0a0a",
-            border: "1px solid #f87171",
-            borderRadius: "4px",
-            marginBottom: "20px",
-          }}
-        >
-          <p style={{ color: "#f87171", fontSize: "0.9rem", marginBottom: "12px" }}>
+        <div className="flex flex-1 flex-col items-center justify-center px-2 text-center">
+          <p className="mb-1 text-[11px] font-semibold text-destructive">Error</p>
+          <p className="mb-3 text-[10px] leading-snug text-muted-foreground">
             {state.message}
           </p>
           <button
             onClick={() => setState({ kind: "unlinked" })}
-            style={{
-              padding: "8px 16px",
-              background: "#333",
-              border: "1px solid #444",
-              borderRadius: "4px",
-              color: "#e0e0e0",
-              cursor: "pointer",
-              fontFamily: "monospace",
-              fontSize: "0.8rem",
-            }}
+            className="rounded bg-muted px-3 py-1 text-[10px] text-foreground active:scale-95"
           >
             Try Again
           </button>
         </div>
       )}
 
-      {/* ─── Linked: disconnect button + logs ─── */}
+      {/* ─── Linked: disconnect + logs ─── */}
       {state.kind === "linked" && (
-        <>
+        <div className="flex min-h-0 flex-1 flex-col">
           <button
             onClick={handleDisconnect}
-            style={{
-              width: "100%",
-              padding: "10px",
-              background: "#333",
-              color: "#e0e0e0",
-              border: "1px solid #444",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontFamily: "monospace",
-              fontSize: "0.85rem",
-              marginBottom: "20px",
-            }}
+            className="mb-2 shrink-0 rounded bg-muted px-3 py-1.5 text-[10px] text-foreground active:scale-95"
           >
             Disconnect &amp; Unlink
           </button>
-        </>
-      )}
-
-      {/* Logs (always visible when linked) */}
-      {state.kind === "linked" && (
-        <div
-          ref={logContainerRef}
-          style={{
-            background: "#111",
-            border: "1px solid #222",
-            borderRadius: "4px",
-            padding: "12px",
-            height: "300px",
-            overflowY: "auto",
-            fontSize: "0.75rem",
-            lineHeight: "1.5",
-          }}
-        >
-          {logs.length === 0 ? (
-            <div style={{ opacity: 0.4 }}>Logs will appear here...</div>
-          ) : (
-            logs.map((entry, i) => (
-              <div
-                key={i}
-                style={{
-                  color:
+          <div
+            ref={logContainerRef}
+            className="min-h-0 flex-1 overflow-y-auto rounded border border-border bg-black/40 p-2 text-[9px] leading-snug scrollbar-hide"
+          >
+            {logs.length === 0 ? (
+              <div className="opacity-40">Logs will appear here…</div>
+            ) : (
+              logs.map((entry, i) => (
+                <div
+                  key={i}
+                  className={
                     entry.level === "error"
-                      ? "#f87171"
+                      ? "text-red-400"
                       : entry.level === "warn"
-                        ? "#fbbf24"
-                        : "#9ca3af",
-                  marginBottom: "2px",
-                }}
-              >
-                <span style={{ opacity: 0.5 }}>
-                  {new Date(entry.timestamp).toLocaleTimeString()}
-                </span>{" "}
-                {entry.message}
-              </div>
-            ))
-          )}
+                        ? "text-amber-400"
+                        : "text-muted-foreground"
+                  }
+                >
+                  <span className="opacity-50">
+                    {new Date(entry.timestamp).toLocaleTimeString()}
+                  </span>{" "}
+                  {entry.message}
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -70,3 +70,54 @@
     text-shadow: -2px 0 hsl(var(--secondary)), 2px 0 hsl(var(--accent));
   }
 }
+
+/* ─── R1A client device canvas ──────────────────────────────────────
+   The R1 WebView opens /r1a_client at 240×282px. We mirror rhythm's
+   creation viewport: a fixed full-screen box (covering the site
+   Header/Footer chrome) that centers a fixed-size 240×282 canvas and
+   scales it up with CSS to fill the viewport — so a layout authored in
+   device-pixels looks identical on the R1 hardware and on desktop. */
+.r1a-viewport {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  overflow: hidden;
+  /* The R1 can't select text — long-press selection handles only get in
+     the way of tapping the Link / Cancel buttons. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  /* `min(...)` scales to fit without overflow. dvh tracks the dynamic
+     viewport so the canvas reaches the real bottom of the screen. */
+  --scale: min(calc(100vw / 240), calc(100dvh / 282));
+}
+@supports not (height: 100dvh) {
+  .r1a-viewport {
+    --scale: min(calc(100vw / 240), calc(100vh / 282));
+  }
+}
+.r1a-canvas {
+  position: relative;
+  width: 240px;
+  height: 282px;
+  flex: 0 0 auto;
+  background: hsl(var(--background));
+  overflow: hidden;
+  transform: scale(var(--scale));
+  transform-origin: center center;
+}
+
+/* Suppress WebKit media playback overlays — the R1 WebView briefly shows
+   a play-button affordance on a <video> while the camera stream buffers,
+   which otherwise sits on top of the QR scanner. */
+video::-webkit-media-controls,
+video::-webkit-media-controls-panel,
+video::-webkit-media-controls-start-playback-button,
+video::-webkit-media-controls-overlay-play-button {
+  display: none !important;
+  -webkit-appearance: none;
+}
