@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useRef, useTransition } from "react";
 import { updateProfile, signOut } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,8 @@ import {
   QrCode,
   RefreshCw,
   Camera,
+  MessageSquare,
+  Send,
 } from "lucide-react";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
@@ -317,9 +319,25 @@ function R1ADeviceSection({ userId }: { userId: string }) {
     loadData();
   }, []);
 
-  // Realtime: detect when device gets linked while showing QR
+  // Detect when the device links while the QR is showing. We use TWO signals
+  // because Supabase Realtime can silently fail to deliver (e.g. the browser
+  // realtime socket isn't carrying the user's JWT), which left the QR stuck on
+  // screen even after the device connected:
+  //   1. Realtime postgres_changes on creation_links (instant when it works)
+  //   2. A polling fallback that re-checks link + device-online state
   useEffect(() => {
     if (pairStep !== "scanning") return;
+
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      setPairStep("linked");
+      toast.success("R1A device linked");
+      loadData();
+    };
+
+    // 1. Realtime
     const sb = createBrowserClient();
     const channel = sb
       .channel(`r1a-pair:${userId}`)
@@ -333,15 +351,34 @@ function R1ADeviceSection({ userId }: { userId: string }) {
         },
         (payload) => {
           const row = payload.new as { client_id: string; is_active: boolean };
-          if (row.client_id === "r1a" && row.is_active) {
-            setPairStep("linked");
-            toast.success("R1A device linked");
-            loadData();
-          }
+          if (row.client_id === "r1a" && row.is_active) finish();
         },
       )
       .subscribe();
+
+    // 2. Polling fallback — fires if Realtime didn't deliver.
+    const poll = setInterval(async () => {
+      try {
+        const [creationsRes, statsRes] = await Promise.all([
+          fetch("/api/creations"),
+          fetch("/api/r1a/stats"),
+        ]);
+        const creations = await creationsRes.json().catch(() => ({}));
+        const r1a = (creations.creations || []).find(
+          (c: Creation) => c.client_id === "r1a",
+        );
+        const hasActiveLink = !!r1a?.links?.some(
+          (l: { is_active: boolean }) => l.is_active,
+        );
+        const stats = statsRes.ok ? await statsRes.json() : null;
+        if (hasActiveLink || stats?.deviceOnline) finish();
+      } catch {
+        // transient — keep polling
+      }
+    }, 3000);
+
     return () => {
+      clearInterval(poll);
       sb.removeChannel(channel);
     };
   }, [pairStep, userId]);
@@ -560,6 +597,8 @@ function R1ADeviceSection({ userId }: { userId: string }) {
               </div>
             </div>
           )}
+
+          <R1ATestChat online={online} />
         </div>
       ) : (
         <div className="space-y-3">
@@ -573,6 +612,185 @@ function R1ADeviceSection({ userId }: { userId: string }) {
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── R1A Test Chat ─────────────────────────────────────────────────
+// A lightweight chat panel to verify the bridge end-to-end. Talks to the
+// session-authenticated /api/r1a/test-chat route, which resolves the user's
+// connected device server-side and reuses the real proxyChatCompletion path.
+
+type ChatMsg = {
+  id: number;
+  role: "user" | "assistant" | "error";
+  content: string;
+};
+
+function R1ATestChat({ online }: { online: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const idRef = useRef(0);
+
+  // Keep the transcript pinned to the latest message.
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, sending]);
+
+  const send = async () => {
+    const text = input.trim();
+    if (!text || sending) return;
+
+    const userMsg: ChatMsg = { id: ++idRef.current, role: "user", content: text };
+    const history = [...messages, userMsg];
+    setMessages(history);
+    setInput("");
+    setSending(true);
+
+    try {
+      const res = await fetch("/api/r1a/test-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: history
+            .filter((m) => m.role === "user" || m.role === "assistant")
+            .map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const reason =
+          data.error === "device_offline"
+            ? "Device went offline."
+            : data.error?.includes("timeout")
+              ? "The R1 didn't respond in time."
+              : data.error?.includes("processing another")
+                ? "The R1 is busy with another request."
+                : data.error || `Request failed (${res.status})`;
+        setMessages((m) => [
+          ...m,
+          { id: ++idRef.current, role: "error", content: reason },
+        ]);
+      } else {
+        setMessages((m) => [
+          ...m,
+          {
+            id: ++idRef.current,
+            role: "assistant",
+            content: data.response || "(empty response)",
+          },
+        ]);
+      }
+    } catch {
+      setMessages((m) => [
+        ...m,
+        {
+          id: ++idRef.current,
+          role: "error",
+          content: "Network error — could not reach the server.",
+        },
+      ]);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+        disabled={!online}
+        className="w-full"
+      >
+        <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
+        {online ? "Test Chat" : "Test Chat (device offline)"}
+      </Button>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border bg-muted/20 overflow-hidden">
+      <div className="flex items-center justify-between border-b bg-muted/40 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <MessageSquare className="h-3.5 w-3.5 text-primary" />
+          <span className="text-xs font-medium">Test Chat</span>
+        </div>
+        <button
+          onClick={() => setMessages([])}
+          className="text-xs text-muted-foreground hover:text-foreground"
+        >
+          Clear
+        </button>
+      </div>
+
+      <div ref={scrollRef} className="h-56 overflow-y-auto px-3 py-3 space-y-2">
+        {messages.length === 0 ? (
+          <p className="text-xs text-muted-foreground text-center py-8">
+            Send a message to your R1 to verify the bridge.
+          </p>
+        ) : (
+          messages.map((m) => (
+            <div
+              key={m.id}
+              className={cn(
+                "flex",
+                m.role === "user" ? "justify-end" : "justify-start",
+              )}
+            >
+              <div
+                className={cn(
+                  "max-w-[85%] rounded-lg px-3 py-1.5 text-sm whitespace-pre-wrap break-words",
+                  m.role === "user"
+                    ? "bg-primary text-primary-foreground"
+                    : m.role === "error"
+                      ? "bg-red-500/10 text-red-400 border border-red-900/30"
+                      : "bg-card border",
+                )}
+              >
+                {m.content}
+              </div>
+            </div>
+          ))
+        )}
+        {sending && (
+          <div className="flex justify-start">
+            <div className="rounded-lg border bg-card px-3 py-1.5">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 border-t bg-background/40 px-3 py-2">
+        <Input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+          placeholder="Message your R1…"
+          disabled={sending}
+          className="h-9 text-sm"
+        />
+        <Button
+          size="sm"
+          onClick={send}
+          disabled={sending || !input.trim()}
+          className="h-9 px-3 shrink-0"
+        >
+          <Send className="h-3.5 w-3.5" />
+        </Button>
+      </div>
     </div>
   );
 }
