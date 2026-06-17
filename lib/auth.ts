@@ -40,11 +40,14 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     return null;
   }
 
-  // Determine display name from user metadata or profile
+  // Display name. Prefer the user's CHOSEN username (public.users.username) —
+  // otherwise the Discord-provided full_name/name in user_metadata always
+  // shadows it, so saving a username appears to "revert" on reload. Fall back
+  // to Discord metadata only when no username has been set.
   const name =
+    profile?.username ||
     (user.user_metadata?.full_name as string) ||
     (user.user_metadata?.name as string) ||
-    profile?.username ||
     user.email?.split("@")[0] ||
     "User";
 
