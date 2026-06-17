@@ -74,7 +74,7 @@ function generateApiKey() {
 
 // ─── Socket.IO Connection Handler ──────────────────────────────
 
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
   const auth = socket.handshake.auth || {};
 
   const apiKey = auth.apiKey;
@@ -91,7 +91,37 @@ io.on('connection', (socket) => {
 
   const apiKeyHash = hashApiKey(apiKey);
 
-  // Check if this key hash is already connected
+  // SECURITY: validate the key against the DB before doing ANYTHING with it.
+  // A format check alone (`boondit_r1_` prefix) would let any client register
+  // a device and — if it collided with a real key's hash — kick the real
+  // device offline and receive/spoof its chat traffic. Mirror the HTTP path's
+  // authenticateApiKey: the key must exist in api_keys and be active.
+  let keyRecord;
+  try {
+    const { data, error } = await supabase
+      .from('api_keys')
+      .select('user_id, device_id')
+      .eq('key_hash', apiKeyHash)
+      .eq('is_active', true)
+      .single();
+    if (error || !data) {
+      socket.emit('error', { type: 'auth_error', message: 'Invalid or revoked API key' });
+      socket.disconnect(true);
+      return;
+    }
+    keyRecord = data;
+  } catch (e) {
+    console.error('[R1A] API key validation error:', e);
+    socket.emit('error', { type: 'auth_error', message: 'Authentication failed' });
+    socket.disconnect(true);
+    return;
+  }
+
+  // The socket may have disconnected while we were awaiting the DB.
+  if (!socket.connected) return;
+
+  // Check if this key hash is already connected (only after validation, so an
+  // unverified client can never evict a live device).
   const existing = connectedDevices.get(apiKeyHash);
   if (existing && existing.socket.connected) {
     // Disconnect the old connection (allow reconnection from same device)
@@ -102,7 +132,8 @@ io.on('connection', (socket) => {
   connectedDevices.set(apiKeyHash, {
     socket,
     apiKeyHash,
-    userId: null, // Will be populated by verifyApiKey
+    userId: keyRecord.user_id,
+    deviceId: keyRecord.device_id,
     linkId: null,
     connectedAt: new Date().toISOString(),
     userAgent: socket.handshake.headers['user-agent'] || 'unknown',

@@ -453,12 +453,34 @@ export default function R1AClientPage() {
     try {
       const payload = await scanLinkPayload(video, ac.signal);
       stopCamera();
-      setState({ kind: "linking" });
 
-      addLog(`Scanned QR, linking to ${payload.endpoint}...`);
+      // SECURITY: never POST the pairing token to whatever URL the QR claims —
+      // a malicious QR could set `endpoint` to an attacker origin and exfiltrate
+      // the token. The link endpoint is always same-origin, so we ignore the
+      // QR's endpoint and reject it if it points anywhere but our own
+      // /api/r1a/link. Only the token is trusted from the payload.
+      const LINK_PATH = "/api/r1a/link";
+      let endpointOk = false;
+      try {
+        const u = new URL(payload.endpoint, window.location.origin);
+        endpointOk =
+          u.origin === window.location.origin && u.pathname === LINK_PATH;
+      } catch {
+        endpointOk = false;
+      }
+      if (!endpointOk) {
+        setState({
+          kind: "error",
+          message: "Untrusted pairing QR (bad endpoint)",
+        });
+        return;
+      }
+
+      setState({ kind: "linking" });
+      addLog("Scanned QR, linking…");
 
       const deviceId = getOrCreateDeviceId();
-      const res = await fetch(payload.endpoint, {
+      const res = await fetch(LINK_PATH, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: payload.token, device_id: deviceId }),
