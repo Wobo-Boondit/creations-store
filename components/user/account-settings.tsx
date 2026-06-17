@@ -28,6 +28,7 @@ import {
   Camera,
   MessageSquare,
   Send,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
@@ -35,6 +36,7 @@ import { createBrowserClient } from "@/lib/supabase/client";
 import type { CurrentUser } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { R1AUsageChart } from "@/components/r1a-usage-chart";
+import { resizeToSquarePng } from "@/lib/image";
 import Markdown from "react-markdown";
 
 // ─── Types ────────────────────────────────────────────────────────
@@ -85,6 +87,8 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
   const [username, setUsername] = useState(user.username || user.name);
   const [isPending, startTransition] = useTransition();
   const [activeTab, setActiveTab] = useState("profile");
+  const [avatar, setAvatar] = useState<string | null>(user.avatar);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,6 +100,75 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
         toast.success("Profile updated");
       }
     });
+  };
+
+  // Avatar: resize to a 256×256 PNG client-side, then POST to the shared
+  // /api/account/avatar route. The result updates users.avatar_url, which is
+  // the same row rhythm reads — so the picture changes in both apps.
+  const handleAvatarFile = async (file: File) => {
+    setUploadingAvatar(true);
+    try {
+      const png = await resizeToSquarePng(file);
+      const res = await fetch("/api/account/avatar", {
+        method: "POST",
+        headers: { "Content-Type": "image/png" },
+        body: png,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(
+          data.error === "too_large"
+            ? "Image is too large"
+            : data.error === "rate_limited"
+              ? "Too many changes — try again later"
+              : "Failed to update avatar",
+        );
+        return;
+      }
+      setAvatar(data.avatar_url);
+      toast.success("Avatar updated");
+    } catch {
+      toast.error("Couldn't process that image");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const pickAvatar = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = (e) => {
+      const f = (e.target as HTMLInputElement).files?.[0];
+      if (f) handleAvatarFile(f);
+    };
+    input.click();
+  };
+
+  // Email change is Supabase Auth-level (shared across all Boondit apps).
+  // updateUser triggers a confirmation email to the NEW address; the change
+  // only takes effect once the user clicks that link.
+  const [email, setEmail] = useState(user.email || "");
+  const [savingEmail, setSavingEmail] = useState(false);
+
+  const handleEmailChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const next = email.trim();
+    if (!next || next === user.email) return;
+    setSavingEmail(true);
+    try {
+      const sb = createBrowserClient();
+      const { error } = await sb.auth.updateUser({ email: next });
+      if (error) {
+        toast.error(error.message || "Failed to update email");
+      } else {
+        toast.success("Check your new inbox to confirm the change");
+      }
+    } catch {
+      toast.error("Failed to update email");
+    } finally {
+      setSavingEmail(false);
+    }
   };
 
   const tabs = [
@@ -141,20 +214,38 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
           {activeTab === "profile" && (
             <div className="rounded-xl border bg-card p-6 space-y-6">
               <div className="flex items-center gap-4">
-                {user.avatar ? (
-                  <img
-                    src={user.avatar}
-                    alt={user.name}
-                    className="h-16 w-16 rounded-full border"
-                  />
-                ) : (
-                  <div className="h-16 w-16 rounded-full border bg-muted flex items-center justify-center text-xl font-bold">
-                    {user.name?.[0]?.toUpperCase() || "?"}
-                  </div>
-                )}
-                <div>
+                <div className="relative">
+                  {avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={avatar}
+                      alt={user.name}
+                      className="h-16 w-16 rounded-full border object-cover"
+                    />
+                  ) : (
+                    <div className="h-16 w-16 rounded-full border bg-muted flex items-center justify-center text-xl font-bold">
+                      {user.name?.[0]?.toUpperCase() || "?"}
+                    </div>
+                  )}
+                  {uploadingAvatar && (
+                    <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50">
+                      <Loader2 className="h-5 w-5 animate-spin text-white" />
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-1">
                   <p className="font-semibold text-lg">{user.name}</p>
                   <p className="text-sm text-muted-foreground">{user.email}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={pickAvatar}
+                    disabled={uploadingAvatar}
+                  >
+                    <Upload className="h-3.5 w-3.5 mr-1.5" />
+                    Change photo
+                  </Button>
                 </div>
               </div>
 
@@ -166,10 +257,11 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     placeholder="Your username"
-                    maxLength={32}
+                    maxLength={24}
                   />
                   <p className="text-xs text-muted-foreground">
-                    This name appears across all Boondit services
+                    Appears across all Boondit services. 3–24 characters;
+                    letters, numbers, hyphens and underscores.
                   </p>
                 </div>
                 <Button
@@ -186,6 +278,37 @@ export function AccountSettings({ user }: { user: CurrentUser }) {
                       <Check className="h-4 w-4 mr-2" />
                       Save Changes
                     </>
+                  )}
+                </Button>
+              </form>
+
+              {/* Email (Supabase Auth-level — shared across Boondit apps) */}
+              <form onSubmit={handleEmailChange} className="space-y-3 border-t pt-6">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Changing this sends a confirmation link to the new address.
+                  </p>
+                </div>
+                <Button
+                  type="submit"
+                  variant="outline"
+                  disabled={savingEmail || !email.trim() || email.trim() === user.email}
+                >
+                  {savingEmail ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    "Update email"
                   )}
                 </Button>
               </form>

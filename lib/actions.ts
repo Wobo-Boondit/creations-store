@@ -117,12 +117,21 @@ export async function updateProfile(
       return { error: "Unauthorized" };
     }
 
+    // Validation mirrors the shared public.users CHECK constraint
+    // (3–24 chars, [A-Za-z0-9_-]) so a username accepted here can't be
+    // rejected at the DB with a cryptic error. The users row is shared with
+    // rhythm, which enforces the same rules.
     const username = formData.username?.trim();
-    if (!username || username.length < 2) {
-      return { error: "Username must be at least 2 characters" };
+    if (!username || username.length < 3) {
+      return { error: "Username must be at least 3 characters" };
     }
-    if (username.length > 32) {
-      return { error: "Username must be 32 characters or less" };
+    if (username.length > 24) {
+      return { error: "Username must be 24 characters or less" };
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+      return {
+        error: "Username may only contain letters, numbers, hyphens and underscores",
+      };
     }
 
     const admin = createAdminClient();
@@ -134,6 +143,10 @@ export async function updateProfile(
       .eq("id", sessionUser.id);
 
     if (error) {
+      // Unique-violation → friendly "taken" message instead of raw PG error.
+      if (error.code === "23505") {
+        return { error: "That username is already taken" };
+      }
       return { error: error.message };
     }
 
