@@ -200,25 +200,39 @@ export async function getCreationDailyStats(
     }));
   }
 
-  // Fallback: calculate from raw clicks data
+  // Fallback: calculate from raw clicks + installs data
   const sinceMs = now() - days * 24 * 60 * 60 * 1000;
-  const { data: clickRows, error: clicksErr } = await supabase
-    .from("store_clicks")
-    .select("session_id, clicked_at")
-    .eq("creation_id", id)
-    .gte("clicked_at", new Date(sinceMs).toISOString());
+  const sinceIso = new Date(sinceMs).toISOString();
 
-  if (clicksErr) {
-    console.error("[analytics] getCreationDailyStats: store_clicks query failed:", clicksErr.message);
+  const [clicksResult, installsResult] = await Promise.all([
+    supabase
+      .from("store_clicks")
+      .select("session_id, clicked_at")
+      .eq("creation_id", id)
+      .gte("clicked_at", sinceIso),
+    supabase
+      .from("store_installs")
+      .select("session_id, installed_at")
+      .eq("creation_id", id)
+      .gte("installed_at", sinceIso),
+  ]);
+
+  if (clicksResult.error) {
+    console.error("[analytics] getCreationDailyStats: store_clicks query failed:", clicksResult.error.message);
   }
 
-  const byDate = new Map<string, { clicks: number; sessions: Set<string> }>();
-  for (const c of clickRows || []) {
+  const byDate = new Map<string, { clicks: number; sessions: Set<string>; installs: number }>();
+  for (const c of clicksResult.data || []) {
     const dateStr = new Date(parseTime(c.clicked_at)).toISOString().split("T")[0];
-    if (!byDate.has(dateStr)) byDate.set(dateStr, { clicks: 0, sessions: new Set() });
+    if (!byDate.has(dateStr)) byDate.set(dateStr, { clicks: 0, sessions: new Set(), installs: 0 });
     const entry = byDate.get(dateStr)!;
     entry.clicks += 1;
     entry.sessions.add(c.session_id);
+  }
+  for (const inst of installsResult.data || []) {
+    const dateStr = new Date(parseTime(inst.installed_at)).toISOString().split("T")[0];
+    if (!byDate.has(dateStr)) byDate.set(dateStr, { clicks: 0, sessions: new Set(), installs: 0 });
+    byDate.get(dateStr)!.installs += 1;
   }
 
   return Array.from(byDate.entries())
@@ -226,8 +240,8 @@ export async function getCreationDailyStats(
       date,
       clicks: entry.clicks,
       uniqueClicks: entry.sessions.size,
-      installs: 0,
-      activeUsers: 0,
+      installs: entry.installs,
+      activeUsers: entry.sessions.size,
     }))
     .sort((a, b) => (a.date < b.date ? 1 : -1));
 }
