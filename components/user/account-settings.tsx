@@ -35,6 +35,7 @@ import { createBrowserClient } from "@/lib/supabase/client";
 import type { CurrentUser } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { R1AUsageChart } from "@/components/r1a-usage-chart";
+import Markdown from "react-markdown";
 
 // ─── Types ────────────────────────────────────────────────────────
 
@@ -779,15 +780,41 @@ function R1ATestChat({
             >
               <div
                 className={cn(
-                  "max-w-[85%] rounded-lg px-3 py-1.5 text-sm whitespace-pre-wrap break-words",
+                  "max-w-[85%] rounded-lg px-3 py-1.5 text-sm break-words",
                   m.role === "user"
-                    ? "bg-primary text-primary-foreground"
+                    ? "bg-primary text-primary-foreground whitespace-pre-wrap"
                     : m.role === "error"
-                      ? "bg-red-500/10 text-red-400 border border-red-900/30"
+                      ? "bg-red-500/10 text-red-400 border border-red-900/30 whitespace-pre-wrap"
                       : "bg-card border",
                 )}
               >
-                {m.content}
+                {m.role === "assistant" ? (
+                  // Render the R1's reply as markdown — compact prose tuned for
+                  // the small chat bubble. Links open in a new tab.
+                  <div
+                    className={cn(
+                      "prose prose-sm dark:prose-invert max-w-none",
+                      "prose-p:my-1 prose-pre:my-1 prose-pre:text-xs prose-ul:my-1 prose-ol:my-1",
+                      "prose-headings:my-1 prose-headings:text-sm prose-code:text-xs",
+                    )}
+                  >
+                    <Markdown
+                      components={{
+                        a: ({ ...props }) => (
+                          <a
+                            {...props}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          />
+                        ),
+                      }}
+                    >
+                      {m.content}
+                    </Markdown>
+                  </div>
+                ) : (
+                  m.content
+                )}
               </div>
             </div>
           ))
