@@ -18,6 +18,7 @@ import { CreationActions } from "@/components/creation-actions";
 import { CreationReviews } from "@/components/creation-reviews";
 import { ExternalLink, Calendar, AppWindow, User, Eye, Star } from "lucide-react";
 import { StarRating } from "@/components/star-rating";
+import { VerifiedBadge } from "@/components/verified-badge";
 
 // Metadata
 import { Metadata, ResolvingMetadata } from "next";
@@ -200,9 +201,10 @@ export default async function Page({ params }: Props) {
                       <User className="h-4 w-4 text-muted-foreground" />
                       <Link
                         href={`/u/${bookmark.user.id}`}
-                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
                       >
                         {bookmark.user.username}
+                        {bookmark.user.isVerified && <VerifiedBadge className="text-[1em]" />}
                       </Link>
                     </div>
                   )}
@@ -383,6 +385,7 @@ export default async function Page({ params }: Props) {
                 id: user.id,
                 username: user.username || user.name || "User",
                 avatarUrl: user.avatar || null,
+                isVerified: user.isVerified,
               } : null}
             />
           </div>

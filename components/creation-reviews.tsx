@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { StarRating } from "@/components/star-rating";
+import { VerifiedBadge } from "@/components/verified-badge";
 import { cn } from "@/lib/utils";
 
 interface Review {
@@ -23,6 +24,7 @@ interface Review {
     id: string;
     username: string;
     avatarUrl: string | null;
+    isVerified?: boolean;
   };
 }
 
@@ -34,6 +36,7 @@ interface CreationReviewsProps {
     id: string;
     username: string;
     avatarUrl?: string | null;
+    isVerified?: boolean;
   } | null;
 }
 
@@ -111,6 +114,7 @@ export function CreationReviews({
               id: currentUser.id,
               username: currentUser.username || "User",
               avatarUrl: currentUser.avatarUrl || null,
+              isVerified: currentUser.isVerified ?? false,
             },
           },
           ...prev,
@@ -416,8 +420,9 @@ export function CreationReviews({
                       </div>
                     )}
                     <div>
-                      <div className="font-medium text-sm">
+                      <div className="inline-flex items-center gap-1 font-medium text-sm">
                         {review.user.username}
+                        {review.user.isVerified && <VerifiedBadge className="text-[0.9em]" />}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         {formatDate(review.createdAt)}

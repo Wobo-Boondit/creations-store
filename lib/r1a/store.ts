@@ -170,15 +170,13 @@ export async function proxyChatCompletion(
 
   const result = await responsePromise;
 
-  // Log the exchange so usage stats/graphs reflect real traffic. This is the
-  // single choke point for ALL chat requests (OpenAI-compatible API + the
-  // dashboard test chat), so logging here keeps every path counted. Best-effort
-  // — a logging failure must never fail the user's request.
+  // Record ONE usage row per request so the stats/graph reflect real traffic.
+  // PRIVACY: we deliberately do NOT store message content — chat text is a data
+  // risk. The stats endpoint only counts role='user' rows by day, so a single
+  // content-free marker row is all that's needed. Best-effort — a logging
+  // failure must never fail the user's request.
   if (device.userId) {
-    logConversation(device.userId, device.deviceId ?? 'unknown', [
-      { role: 'user', content: payload.originalMessage ?? payload.message },
-      { role: 'assistant', content: result.response ?? '' },
-    ]);
+    logUsage(device.userId, device.deviceId ?? 'unknown');
   }
 
   return {
@@ -187,27 +185,21 @@ export async function proxyChatCompletion(
   };
 }
 
-// Fire-and-forget insert of conversation turns into r1a_conversations.
-function logConversation(
-  userId: string,
-  deviceId: string,
-  turns: { role: string; content: string }[],
-): void {
+// Fire-and-forget usage marker. Inserts a single content-free row (role='user')
+// — enough for totalRequests / lastActivity / the 14-day graph, with no
+// conversation content retained.
+function logUsage(userId: string, deviceId: string): void {
   const supabase = createAdminClient();
-  const nowIso = new Date().toISOString();
   supabase
     .from('r1a_conversations')
-    .insert(
-      turns.map((t) => ({
-        user_id: userId,
-        device_id: deviceId,
-        role: t.role,
-        content: t.content,
-        created_at: nowIso,
-      })),
-    )
+    .insert({
+      user_id: userId,
+      device_id: deviceId,
+      role: 'user',
+      created_at: new Date().toISOString(),
+    })
     .then(({ error }) => {
-      if (error) console.error('[R1A] conversation log failed:', error.message);
+      if (error) console.error('[R1A] usage log failed:', error.message);
     });
 }
 

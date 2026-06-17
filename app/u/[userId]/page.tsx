@@ -5,6 +5,7 @@ import { CreationGrid } from "@/components/creation-grid";
 import { User, Calendar, Layers } from "lucide-react";
 import type { Metadata } from "next";
 import { directory } from "@/directory.config";
+import { VerifiedBadge } from "@/components/verified-badge";
 
 type Props = {
   params: Promise<{ userId: string }>;
@@ -71,8 +72,9 @@ export default async function UserProfilePage({ params }: Props) {
                 )}
                 <div className="flex-1 space-y-3">
                   <div>
-                    <h1 className="text-3xl font-bold">
+                    <h1 className="inline-flex items-center gap-2 text-3xl font-bold">
                       {profile.username}
+                      {profile.isVerified && <VerifiedBadge className="text-[0.7em]" />}
                     </h1>
                     {profile.username && (
                       <p className="text-sm text-muted-foreground mt-1">

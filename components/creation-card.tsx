@@ -14,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Star, Archive, AppWindow, Download } from "lucide-react";
 import { StarRating } from "@/components/star-rating";
+import { VerifiedBadge } from "@/components/verified-badge";
 
 interface CreationCardProps {
   creation: {
@@ -30,6 +31,7 @@ interface CreationCardProps {
     user?: {
       id: string;
       username: string;
+      isVerified?: boolean;
     } | null;
     iconUrl?: string | null;
     favicon?: string | null;
@@ -167,10 +169,11 @@ export const CreationCard = ({ creation }: CreationCardProps) => {
                 {creation.title}
               </h3>
               {(creation.author || creation.user) && (
-                <p className="truncate text-xs text-muted-foreground">
+                <p className="inline-flex items-center gap-1 truncate text-xs text-muted-foreground">
                   {creation.author ? `by ${creation.author}` : null}
                   {creation.author && creation.user ? " · " : null}
                   {creation.user && `added by ${creation.user.username}`}
+                  {creation.user?.isVerified && <VerifiedBadge className="text-[0.9em]" />}
                 </p>
               )}
               {creation.averageRating && creation.averageRating.count > 0 && (

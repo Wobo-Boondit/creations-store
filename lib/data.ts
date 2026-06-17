@@ -53,6 +53,7 @@ export type User = {
   username: string;
   avatarUrl: string | null;
   createdAt: string;
+  isVerified: boolean;
 };
 
 export type CreationScreenshot = {
@@ -135,6 +136,7 @@ function mapUser(row: any): User | null {
     username: row.username,
     avatarUrl: row.avatar_url,
     createdAt: row.created_at,
+    isVerified: row.is_verified ?? false,
   };
 }
 
@@ -163,7 +165,7 @@ export async function getAllCreations(): Promise<(Creation & { category: Categor
   const supabase = db();
   const { data } = await supabase
     .from("store_creations")
-    .select("*, store_categories(*), users(id, username, avatar_url, created_at)")
+    .select("*, store_categories(*), users(id, username, avatar_url, created_at, is_verified)")
     .eq("status", "published")
     .order("created_at", { ascending: false });
 
@@ -188,7 +190,7 @@ export async function getCreationById(id: string): Promise<(Creation & { categor
   const supabase = db();
   const { data } = await supabase
     .from("store_creations")
-    .select("*, store_categories(*), users(id, username, avatar_url, created_at)")
+    .select("*, store_categories(*), users(id, username, avatar_url, created_at, is_verified)")
     .eq("id", id)
     .single();
 
@@ -210,7 +212,7 @@ export async function getCreationBySlug(slug: string): Promise<(Creation & { cat
   const supabase = db();
   const { data } = await supabase
     .from("store_creations")
-    .select("*, store_categories(*), users(id, username, avatar_url, created_at)")
+    .select("*, store_categories(*), users(id, username, avatar_url, created_at, is_verified)")
     .eq("slug", slug)
     .single();
 
@@ -313,7 +315,7 @@ export async function getPublishedCreations(): Promise<(Creation & { category: C
   const supabase = db();
   const { data } = await supabase
     .from("store_creations")
-    .select("*, store_categories(*), users(id, username, avatar_url, created_at)")
+    .select("*, store_categories(*), users(id, username, avatar_url, created_at, is_verified)")
     .eq("status", "published")
     .order("created_at", { ascending: false });
 
@@ -351,7 +353,7 @@ export async function getUserById(userId: string): Promise<User | null> {
   const supabase = db();
   const { data } = await supabase
     .from("users")
-    .select("id, username, avatar_url, created_at")
+    .select("id, username, avatar_url, created_at, is_verified")
     .eq("id", userId)
     .single();
 
@@ -362,7 +364,7 @@ export async function getAllUsers(): Promise<(User & { creationCount: number })[
   const supabase = db();
   const { data: allUsers } = await supabase
     .from("users")
-    .select("id, username, avatar_url, created_at")
+    .select("id, username, avatar_url, created_at, is_verified")
     .order("created_at", { ascending: false });
 
   if (!allUsers) return [];
@@ -496,7 +498,7 @@ export async function getCreationReviews(creationId: string): Promise<CreationRe
   const supabase = db();
   const { data } = await supabase
     .from("store_reviews")
-    .select("*, users(id, username, avatar_url, created_at)")
+    .select("*, users(id, username, avatar_url, created_at, is_verified)")
     .eq("creation_id", creationId)
     .order("created_at", { ascending: false });
 

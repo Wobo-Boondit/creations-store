@@ -8,6 +8,7 @@ export type CurrentUser = {
   username: string | null;
   avatar: string | null;
   isAdmin: boolean;
+  isVerified: boolean;
 };
 
 // Admin Discord IDs from env (comma-separated), not hardcoded in source
@@ -30,7 +31,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   const admin = createAdminClient();
   const { data: profile } = await admin
     .from("users")
-    .select("id, username, avatar_url, is_suspended")
+    .select("id, username, avatar_url, is_suspended, is_verified")
     .eq("id", user.id)
     .single();
 
@@ -60,6 +61,7 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     username: profile?.username || null,
     avatar: profile?.avatar_url || (user.user_metadata?.avatar_url as string) || null,
     isAdmin,
+    isVerified: profile?.is_verified ?? false,
   };
 }
 
